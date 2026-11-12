@@ -18,6 +18,8 @@ jobs:
 
   snapshots:
     runs-on: macos-15
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
       - name: Build
@@ -29,7 +31,12 @@ jobs:
           for i in $(seq 1 120); do kill -0 $PID 2>/dev/null || break; sleep 1; done
           kill $PID 2>/dev/null || true
           ls -la snapshots
-      - uses: actions/upload-artifact@v4
-        with:
-          name: ui-snapshots
-          path: snapshots/*.png
+      - name: Publish snapshots to the `ui-snapshots` branch
+        if: github.event_name != 'pull_request'
+        run: |
+          cd snapshots
+          git init -q -b ui-snapshots
+          git add *.png
+          git -c user.name="github-actions" -c user.email="github-actions@users.noreply.github.com" \
+            commit -qm "UI snapshots for ${GITHUB_SHA::7}"
+          git push -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}" ui-snapshots
