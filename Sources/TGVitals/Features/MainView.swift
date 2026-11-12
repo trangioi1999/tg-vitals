@@ -18,7 +18,11 @@ enum Page: String, CaseIterable, Identifiable {
 
 struct MainView: View {
     @Environment(SystemMonitor.self) private var monitor
-    @State private var page: Page = .overview
+    @State private var page: Page
+
+    init(initialPage: Page = .overview) {
+        _page = State(initialValue: initialPage)
+    }
 
     var body: some View {
         NavigationSplitView {

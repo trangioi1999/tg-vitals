@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
 
 jobs:
   build:
@@ -14,3 +15,21 @@ jobs:
         run: swift build
       - name: Test
         run: swift test
+
+  snapshots:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build
+        run: swift build
+      - name: Render UI snapshots
+        run: |
+          .build/debug/TGVitals --snapshot "$PWD/snapshots" &
+          PID=$!
+          for i in $(seq 1 120); do kill -0 $PID 2>/dev/null || break; sleep 1; done
+          kill $PID 2>/dev/null || true
+          ls -la snapshots
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ui-snapshots
+          path: snapshots/*.png

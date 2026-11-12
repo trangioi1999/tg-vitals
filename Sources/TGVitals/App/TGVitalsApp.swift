@@ -6,6 +6,15 @@ struct TGVitalsApp: App {
     @State private var monitor = SystemMonitor()
     @State private var care = CareModel()
 
+    init() {
+        if let directory = Snapshotter.outputDirectory {
+            Task { @MainActor in
+                try? await Task.sleep(for: .seconds(1))
+                await Snapshotter.run(to: directory)
+            }
+        }
+    }
+
     var body: some Scene {
         MenuBarExtra {
             MenuBarView()
