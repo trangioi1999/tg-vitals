@@ -1,3 +1,13 @@
+> **Đổi hướng (11/2026):** chuyển sang **Tauri 2 (Rust + React)**, UI theo phong cách Pulse.
+> Frontend nằm ở `app/` (đã xong, đang chạy dữ liệu mẫu). Bản Swift cũ giữ lại để tham khảo cho tới khi backend Rust thay thế.
+>
+> **Việc tiếp theo:**
+> - [ ] Backend Rust: CPU, RAM, disk, mạng, process, pin (crate `sysinfo` + IOKit), lệnh `snapshot` / `kill_process`
+> - [ ] Dọn rác bằng Rust: `scan_cleanup`, `trash_paths` (chỉ chuyển vào Thùng rác, giữ luật PathGuard)
+> - [ ] **Menu bar (tray):** item trên thanh menu hiện CPU / RAM / mạng / nhiệt độ, bấm vào mở popup nhỏ kiểu Pulse
+> - [ ] Icon app thật cho từng process
+> - [ ] CI build `tg-vitals.app` (ký ad-hoc, không cần Apple Developer) để tải về dùng
+
 # Kế hoạch phát triển tg-vitals
 
 Tổng thời gian ước tính: **~3–4 tuần** làm buổi tối/cuối tuần (có AI hỗ trợ).
