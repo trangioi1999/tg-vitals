@@ -20,6 +20,40 @@ pub fn compact_bytes(value: f64) -> String {
     }
 }
 
+/// How worrying a menu bar value is; the tray colors values by it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Load {
+    Normal,
+    High,
+    Critical,
+}
+
+impl Load {
+    fn from(value: f64, high: f64, critical: f64) -> Self {
+        if value >= critical {
+            Load::Critical
+        } else if value >= high {
+            Load::High
+        } else {
+            Load::Normal
+        }
+    }
+
+    /// CPU or RAM usage, 0..1.
+    pub fn cpu(fraction: f64) -> Self {
+        Self::from(fraction, 0.60, 0.85)
+    }
+
+    pub fn memory(fraction: f64) -> Self {
+        Self::from(fraction, 0.75, 0.90)
+    }
+
+    /// CPU temperature, °C.
+    pub fn temperature(celsius: f64) -> Self {
+        Self::from(celsius, 70.0, 85.0)
+    }
+}
+
 /// Percent-encodes a filesystem path for use in a URL path (keeps `/`).
 pub fn encode_path(path: &str) -> String {
     let mut out = String::with_capacity(path.len());
@@ -56,6 +90,19 @@ pub fn decode_path(encoded: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn load_levels() {
+        assert_eq!(Load::cpu(0.23), Load::Normal);
+        assert_eq!(Load::cpu(0.60), Load::High);
+        assert_eq!(Load::cpu(0.90), Load::Critical);
+        assert_eq!(Load::memory(0.61), Load::Normal);
+        assert_eq!(Load::memory(0.80), Load::High);
+        assert_eq!(Load::memory(0.95), Load::Critical);
+        assert_eq!(Load::temperature(44.0), Load::Normal);
+        assert_eq!(Load::temperature(75.0), Load::High);
+        assert_eq!(Load::temperature(92.0), Load::Critical);
+    }
 
     #[test]
     fn compact() {
