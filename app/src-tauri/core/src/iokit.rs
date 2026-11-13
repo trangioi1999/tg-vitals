@@ -182,8 +182,9 @@ pub fn get_bool(dict: CFTypeRef, key: &str) -> Option<bool> {
 /// Apple silicon temperature sensors through the IOHID event system.
 pub struct HidThermal {
     client: Owned,
-    /// (name, service) — services are borrowed from `services`.
     services: Owned,
+    /// `Product` name per service, read once.
+    names: Vec<Option<String>>,
 }
 
 const HID_EVENT_TYPE_TEMPERATURE: i64 = 15;
@@ -201,35 +202,65 @@ impl HidThermal {
             ]);
             IOHIDEventSystemClientSetMatching(client.get() as *mut c_void, matching.as_concrete_TypeRef());
             let services = Owned::new(IOHIDEventSystemClientCopyServices(client.get() as *mut c_void) as CFTypeRef)?;
-            Some(Self { client, services })
+            let names = service_names(&services);
+            Some(Self { client, services, names })
         }
     }
 
-    /// (sensor name, °C) for every readable sensor.
+    /// Sensor names, cached once (indices match `read_only`).
+    pub fn names(&self) -> &[Option<String>] {
+        &self.names
+    }
+
+    /// (sensor name, °C) for every readable sensor. Reads ~60 sensors: tens of ms, debugging only.
     pub fn read(&self) -> Vec<(String, f64)> {
+        self.read_only(&(0..self.names.len()).collect::<Vec<_>>())
+    }
+
+    /// (sensor name, °C) for the sensors at `indices` only; each read costs ~1 ms.
+    pub fn read_only(&self, indices: &[usize]) -> Vec<(String, f64)> {
         let _keep = &self.client;
         let mut out = Vec::new();
-        let key = CFString::new("Product");
         // SAFETY: services array is owned by self; events follow the create rule.
         unsafe {
             let array = self.services.get() as CFArrayRef;
-            for i in 0..CFArrayGetCount(array) {
-                let service = CFArrayGetValueAtIndex(array, i);
+            let count = CFArrayGetCount(array).max(0) as usize;
+            for &i in indices {
+                let Some(Some(name)) = self.names.get(i) else { continue };
+                if i >= count {
+                    continue;
+                }
+                let service = CFArrayGetValueAtIndex(array, i as isize);
                 if service.is_null() {
                     continue;
                 }
-                let Some(name) = Owned::new(IOHIDServiceClientCopyProperty(service, key.as_concrete_TypeRef())) else {
-                    continue;
-                };
-                let Some(name) = as_string(name.get()) else { continue };
                 let Some(event) = Owned::new(IOHIDServiceClientCopyEvent(service, HID_EVENT_TYPE_TEMPERATURE, 0, 0) as CFTypeRef) else {
                     continue;
                 };
                 let value = IOHIDEventGetFloatValue(event.get() as *mut c_void, (HID_EVENT_TYPE_TEMPERATURE as i32) << 16);
-                out.push((name, value));
+                out.push((name.clone(), value));
             }
         }
         out
+    }
+}
+
+/// `Product` name of every service in the array (None where it has none).
+fn service_names(services: &Owned) -> Vec<Option<String>> {
+    let key = CFString::new("Product");
+    // SAFETY: the array is alive for the call; copied properties follow the create rule.
+    unsafe {
+        let array = services.get() as CFArrayRef;
+        (0..CFArrayGetCount(array))
+            .map(|i| {
+                let service = CFArrayGetValueAtIndex(array, i);
+                if service.is_null() {
+                    return None;
+                }
+                let name = Owned::new(IOHIDServiceClientCopyProperty(service, key.as_concrete_TypeRef()))?;
+                as_string(name.get())
+            })
+            .collect()
     }
 }
 
