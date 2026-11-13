@@ -178,13 +178,19 @@ impl HidThermal {
         use core_foundation::number::CFNumber;
         // SAFETY: create rule; matching dict outlives the call.
         unsafe {
+            let trace = std::env::var_os("TGV_TRACE_HID").is_some();
+            let mark = |m: &str| if trace { eprintln!("  hid: {m}") };
+            mark("create");
             let client = Owned::new(IOHIDEventSystemClientCreate(kCFAllocatorDefault) as CFTypeRef)?;
+            mark("matching");
             let matching = CFDictionary::from_CFType_pairs(&[
                 (CFString::new("PrimaryUsagePage"), CFNumber::from(0xff00i32)),
                 (CFString::new("PrimaryUsage"), CFNumber::from(5i32)),
             ]);
             IOHIDEventSystemClientSetMatching(client.get() as *mut c_void, matching.as_concrete_TypeRef());
+            mark("copy services");
             let services = Owned::new(IOHIDEventSystemClientCopyServices(client.get() as *mut c_void) as CFTypeRef)?;
+            mark("ok");
             Some(Self { client, services })
         }
     }

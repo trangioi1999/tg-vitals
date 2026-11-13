@@ -34,6 +34,8 @@ mod mac {
         eprintln!("  {:?}", s.disk_io());
         step("battery");
         eprintln!("  {:?}", s.battery());
+        step("vm check");
+        eprintln!("  hv_vmm_present={:?}", sys::sysctl_value::<i32>("kern.hv_vmm_present"));
         step("thermal client");
         let t = sensors::Sensors::new();
         step("thermal read");

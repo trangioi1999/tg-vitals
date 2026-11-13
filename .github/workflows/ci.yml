@@ -41,6 +41,13 @@ jobs:
       - name: Probe every macOS reader
         run: cargo run -p vitals-core --example probe
         working-directory: app/src-tauri
+      - name: Diagnose IOHID thermal client in the VM (backtrace, allowed to fail)
+        continue-on-error: true
+        env:
+          TGV_FORCE_HID: "1"
+          TGV_TRACE_HID: "1"
+        run: lldb --batch -o run -o bt -o quit -- target/debug/examples/probe
+        working-directory: app/src-tauri
       - name: Test on a real Mac (samplers, icons, Trash)
         # One test at a time so a crash in system code names the test that caused it.
         run: cargo test -p vitals-core -- --include-ignored --nocapture --test-threads=1
