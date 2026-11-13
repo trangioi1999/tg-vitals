@@ -151,6 +151,8 @@ mod tests {
     fn reads_battery() {
         let mut s = sensors::Sensors::new_without_thermal();
         eprintln!("battery {:?}", s.battery());
+        std::thread::sleep(std::time::Duration::from_secs(2));
+        eprintln!("battery (system_profiler) {:?}", s.battery());
     }
 
     #[test]

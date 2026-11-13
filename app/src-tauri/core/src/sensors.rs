@@ -12,12 +12,63 @@ pub fn cpu_temperature(sensors: &[(String, f64)]) -> Option<f64> {
         .or_else(|| pick(&|n| n.contains("CPU")))
 }
 
+/// SMC temperature keys on Intel Macs, most specific first. Per-core keys (`TC1C`…) exist on
+/// Skylake and later (e.g. MacBook Pro 16" 2019); older chips only have die/proximity keys.
+pub const SMC_CPU_KEYS: &[&str] = &[
+    "TC1C", "TC2C", "TC3C", "TC4C", "TC5C", "TC6C", "TC7C", "TC8C", "TC9C", "TCAC", "TCBC", "TCCC", "TCDC",
+    "TCEC", "TCFC", "TCGC", "TCXC", "TCXc", "TC0D", "TC0E", "TC0F", "TC0P", "TC0H",
+];
+
+/// Decode an SMC value by its type: `spXY` / `fpXY` fixed point (last hex digit = fraction bits),
+/// `flt ` little-endian f32, `ui8 ` / `ui16` integers.
+pub fn smc_decode(kind: &[u8; 4], bytes: &[u8]) -> Option<f64> {
+    let be16 = || Some(u16::from_be_bytes(bytes.get(..2)?.try_into().ok()?));
+    match kind {
+        b"flt " => Some(f32::from_le_bytes(bytes.get(..4)?.try_into().ok()?) as f64),
+        b"ui8 " => bytes.first().map(|&b| b as f64),
+        b"ui16" => be16().map(f64::from),
+        [b's', b'p', _, f] | [b'f', b'p', _, f] => {
+            let frac = (*f as char).to_digit(16)?;
+            let raw = be16()?;
+            let value = if kind[0] == b's' { raw as i16 as f64 } else { raw as f64 };
+            Some(value / f64::from(1u32 << frac))
+        }
+        _ => None,
+    }
+}
+
+/// CPU temperature from SMC readings: average of the per-core sensors, else the first die /
+/// PECI / proximity key that reads a sane value.
+pub fn smc_cpu_temperature(readings: &[(String, f64)]) -> Option<f64> {
+    let valid = |t: f64| t > 5.0 && t < 130.0;
+    let cores: Vec<f64> = readings
+        .iter()
+        .filter(|(k, t)| k.len() == 4 && k.starts_with("TC") && k.ends_with('C') && k != "TCXC" && valid(*t))
+        .map(|(_, t)| *t)
+        .collect();
+    if !cores.is_empty() {
+        return Some(cores.iter().sum::<f64>() / cores.len() as f64);
+    }
+    SMC_CPU_KEYS.iter().find_map(|key| readings.iter().find(|(k, t)| k == key && valid(*t)).map(|(_, t)| *t))
+}
+
 /// Max capacity relative to design. Apple silicon reports `MaxCapacity` as a percent (100)
 /// and the real mAh in `AppleRawMaxCapacity`.
 pub fn battery_health(raw_max: Option<i64>, max: Option<i64>, design: Option<i64>) -> f64 {
     let Some(design) = design.filter(|&d| d > 0) else { return 1.0 };
     let max = raw_max.filter(|&m| m > 0).or(max.filter(|&m| m > 100));
     max.map(|m| (m as f64 / design as f64).clamp(0.0, 1.0)).unwrap_or(1.0)
+}
+
+/// "Maximum Capacity" exactly as System Settings shows it, from `system_profiler SPPowerDataType -json`
+/// (macOS computes it privately; it is not in IOKit). Returns 0..1.
+pub fn parse_max_capacity(json: &str) -> Option<f64> {
+    let root: serde_json::Value = serde_json::from_str(json).ok()?;
+    root.get("SPPowerDataType")?.as_array()?.iter().find_map(|item| {
+        let text = item.get("sppower_battery_health_info")?.get("sppower_battery_health_maximum_capacity")?.as_str()?;
+        let percent: f64 = text.trim().trim_end_matches('%').trim().parse().ok()?;
+        (percent > 0.0 && percent <= 100.0).then_some(percent / 100.0)
+    })
 }
 
 /// Whole-machine watts: telemetry `SystemLoad` (mW) when present, else |amps × volts|.
@@ -37,14 +88,28 @@ pub use mac::{volume_space, Sensors};
 #[cfg(target_os = "macos")]
 mod mac {
     use super::*;
-    use crate::iokit::{self, HidThermal, Service};
+    use crate::iokit::{self, HidThermal, Service, Smc};
     use crate::model::BatteryInfo;
-    use std::time::Instant;
+    use std::sync::{Arc, Mutex};
+    use std::time::{Duration, Instant};
+
+    /// How often to re-ask `system_profiler` for battery health (it changes over weeks).
+    const HEALTH_REFRESH: Duration = Duration::from_secs(600);
+
+    fn macos_battery_health() -> Option<f64> {
+        let out = std::process::Command::new("/usr/sbin/system_profiler").args(["SPPowerDataType", "-json"]).output().ok()?;
+        out.status.success().then(|| parse_max_capacity(&String::from_utf8_lossy(&out.stdout)))?
+    }
 
     pub struct Sensors {
         thermal: Option<HidThermal>,
+        /// Intel only: temperatures come from the SMC.
+        smc: Option<Smc>,
         disk_previous: Option<(u64, u64, Instant)>,
         has_battery: bool,
+        /// Latest health from `system_profiler`, filled by a background thread.
+        macos_health: Arc<Mutex<Option<f64>>>,
+        health_asked: Option<Instant>,
     }
 
     impl Default for Sensors {
@@ -56,21 +121,38 @@ mod mac {
     impl Sensors {
         pub fn new() -> Self {
             // Intel Macs expose temperatures through SMC, not these IOHID sensors.
-            let thermal = if cfg!(target_arch = "aarch64") { HidThermal::new() } else { None };
-            Self { thermal, ..Self::new_without_thermal() }
+            if cfg!(target_arch = "aarch64") {
+                Self { thermal: HidThermal::new(), ..Self::new_without_thermal() }
+            } else {
+                Self { smc: Smc::open(), ..Self::new_without_thermal() }
+            }
         }
 
         pub fn new_without_thermal() -> Self {
-            Self { thermal: None, disk_previous: None, has_battery: true }
+            Self {
+                thermal: None,
+                smc: None,
+                disk_previous: None,
+                has_battery: true,
+                macos_health: Arc::default(),
+                health_asked: None,
+            }
         }
 
         pub fn temperature(&self) -> Option<f64> {
-            cpu_temperature(&self.thermal.as_ref()?.read())
+            if let Some(hid) = &self.thermal {
+                return cpu_temperature(&hid.read());
+            }
+            smc_cpu_temperature(&self.smc.as_ref()?.temperatures(SMC_CPU_KEYS))
         }
 
         /// All temperature sensors, for debugging new chips.
         pub fn all_temperatures(&self) -> Vec<(String, f64)> {
-            self.thermal.as_ref().map(|t| t.read()).unwrap_or_default()
+            match (&self.thermal, &self.smc) {
+                (Some(hid), _) => hid.read(),
+                (None, Some(smc)) => smc.temperatures(SMC_CPU_KEYS),
+                _ => Vec::new(),
+            }
         }
 
         /// (read bytes/s, write bytes/s) summed over every block storage driver.
@@ -94,6 +176,20 @@ mod mac {
             rates
         }
 
+        /// Re-reads System Settings' battery health off the sampling thread (~150 ms).
+        fn refresh_macos_health(&mut self) {
+            if self.health_asked.is_some_and(|at| at.elapsed() < HEALTH_REFRESH) {
+                return;
+            }
+            self.health_asked = Some(Instant::now());
+            let slot = Arc::clone(&self.macos_health);
+            std::thread::spawn(move || {
+                if let Some(h) = macos_battery_health() {
+                    *slot.lock().unwrap_or_else(|e| e.into_inner()) = Some(h);
+                }
+            });
+        }
+
         pub fn battery(&mut self) -> Option<BatteryInfo> {
             if !self.has_battery {
                 return None;
@@ -102,6 +198,8 @@ mod mac {
                 self.has_battery = false;
                 return None;
             };
+            self.refresh_macos_health();
+            let macos_health = *self.macos_health.lock().unwrap_or_else(|e| e.into_inner());
             let props = service.properties()?;
             let p = props.get();
             let current = iokit::get_i64(p, "CurrentCapacity").unwrap_or(0);
@@ -113,19 +211,39 @@ mod mac {
                 percent: (current as f64 / max as f64).clamp(0.0, 1.0),
                 charging: iokit::get_bool(p, "IsCharging").unwrap_or(false),
                 on_adapter: iokit::get_bool(p, "ExternalConnected").unwrap_or(false),
-                health: battery_health(
-                    iokit::get_i64(p, "AppleRawMaxCapacity"),
-                    Some(max),
-                    iokit::get_i64(p, "DesignCapacity"),
-                ),
+                health: macos_health.unwrap_or_else(|| {
+                    battery_health(iokit::get_i64(p, "AppleRawMaxCapacity"), Some(max), iokit::get_i64(p, "DesignCapacity"))
+                }),
                 cycles: iokit::get_i64(p, "CycleCount").unwrap_or(0).max(0) as u32,
                 power_draw: power_watts(system_load, amperage, iokit::get_i64(p, "Voltage")),
             })
         }
     }
 
-    /// (total, free) bytes of the startup volume's data partition.
+    /// (total, free) bytes of the startup volume, as Finder shows them: "free" includes purgeable
+    /// space macOS frees on demand (`volumeAvailableCapacityForImportantUsage`). Falls back to statfs.
     pub fn volume_space() -> (u64, u64) {
+        finder_volume_space().unwrap_or_else(statfs_volume_space)
+    }
+
+    fn finder_volume_space() -> Option<(u64, u64)> {
+        use objc2_foundation::{
+            NSArray, NSNumber, NSString, NSURLVolumeAvailableCapacityForImportantUsageKey, NSURLVolumeTotalCapacityKey,
+            NSURL,
+        };
+        let url = NSURL::fileURLWithPath(&NSString::from_str("/"));
+        // SAFETY: Foundation's constant keys, valid for the process lifetime.
+        let (free_key, total_key) = unsafe { (NSURLVolumeAvailableCapacityForImportantUsageKey, NSURLVolumeTotalCapacityKey) };
+        let values = url.resourceValuesForKeys_error(&NSArray::from_slice(&[free_key, total_key])).ok()?;
+        let number = |key| -> Option<u64> {
+            let n = values.objectForKey(key)?.downcast::<NSNumber>().ok()?.longLongValue();
+            (n > 0).then_some(n as u64)
+        };
+        let (total, free) = (number(total_key)?, number(free_key)?);
+        Some((total, free.min(total)))
+    }
+
+    fn statfs_volume_space() -> (u64, u64) {
         for path in ["/System/Volumes/Data\0", "/\0"] {
             let mut st = std::mem::MaybeUninit::<libc::statfs>::zeroed();
             // SAFETY: NUL-terminated path, valid out-pointer.
@@ -157,11 +275,42 @@ mod tests {
     }
 
     #[test]
+    fn decodes_smc_values() {
+        assert_eq!(smc_decode(b"sp78", &[0x3A, 0x80]), Some(58.5));
+        assert_eq!(smc_decode(b"sp78", &[0xFF, 0x00]), Some(-1.0));
+        assert_eq!(smc_decode(b"fpe2", &[0x00, 0x64]), Some(25.0));
+        assert_eq!(smc_decode(b"flt ", &47.25f32.to_le_bytes()), Some(47.25));
+        assert_eq!(smc_decode(b"ui8 ", &[7]), Some(7.0));
+        assert_eq!(smc_decode(b"sp78", &[0x3A]), None);
+        assert_eq!(smc_decode(b"ch8*", b"abcd"), None);
+    }
+
+    #[test]
+    fn picks_smc_cpu_sensors() {
+        let i9 = [s("TC1C", 60.0), s("TC2C", 64.0), s("TCXC", 90.0), s("TC0P", 50.0)];
+        assert_eq!(smc_cpu_temperature(&i9), Some(62.0));
+        let old = [s("TC0P", 50.0), s("TC0D", 70.0), s("TC1C", 0.0)];
+        assert_eq!(smc_cpu_temperature(&old), Some(70.0));
+        assert_eq!(smc_cpu_temperature(&[s("TCXC", 81.0), s("TC0P", 50.0)]), Some(81.0));
+        assert_eq!(smc_cpu_temperature(&[s("TB0T", 30.0)]), None);
+    }
+
+    #[test]
     fn health() {
         assert!((battery_health(Some(4700), Some(100), Some(5000)) - 0.94).abs() < 1e-9);
         assert!((battery_health(None, Some(4500), Some(5000)) - 0.9).abs() < 1e-9);
         assert_eq!(battery_health(None, Some(100), Some(5000)), 1.0);
         assert_eq!(battery_health(Some(1), None, None), 1.0);
+    }
+
+    #[test]
+    fn parses_system_profiler_health() {
+        let json = r#"{"SPPowerDataType":[{"_name":"spbattery_information","sppower_battery_health_info":
+            {"sppower_battery_cycle_count":433,"sppower_battery_health_maximum_capacity":"79%"}},
+            {"_name":"sppower_information"}]}"#;
+        assert_eq!(parse_max_capacity(json), Some(0.79));
+        assert_eq!(parse_max_capacity(r#"{"SPPowerDataType":[{"_name":"sppower_information"}]}"#), None);
+        assert_eq!(parse_max_capacity("not json"), None);
     }
 
     #[test]
