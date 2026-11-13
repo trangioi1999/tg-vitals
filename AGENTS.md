@@ -15,7 +15,9 @@ Bản Swift cũ (`Sources/`, `Package.swift`) chỉ để tham khảo, không ph
 
 ## Quy tắc
 
-- Chỉ macOS 14+, Apple silicon. Không cần code cho Intel/Linux/Windows (chỉ cần `vitals-core` compile được trên Linux để chạy test logic).
+- macOS 14+, build **universal** (Apple silicon + Intel). Code phải compile cho cả `aarch64` và `x86_64-apple-darwin`;
+  tính năng chỉ có trên chip Apple (cảm biến nhiệt IOHID, P/E core) phải tự tắt trên Intel. Không cần Linux/Windows
+  (chỉ cần `vitals-core` compile được trên Linux để chạy test logic).
 - `vitals-core` không có code UI. Logic tính toán để ở hàm thuần và có test.
 - **Xóa file: chỉ qua `care::trasher` (dùng `trashItemAtURL`). Cấm `remove_file`/`remove_dir_all`, cấm `rm -rf`.**
 - Không đụng đường dẫn hệ thống (`/System`, `/Library`, `/usr`, `/bin`, `/sbin`, `/Applications`).

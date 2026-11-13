@@ -8,6 +8,8 @@
 > - [x] **Menu bar (tray):** item trên thanh menu hiện CPU / RAM / mạng / nhiệt độ, bấm vào mở popup nhỏ kiểu Pulse
 > - [x] Icon app thật cho từng process (scheme `appicon://`, render bằng NSWorkspace, có cache)
 > - [x] CI build `tg-vitals.app` (ký ad-hoc, không cần Apple Developer) để tải về dùng — artifact mỗi lần chạy, Release khi push tag `v*`
+> - [x] Build **universal** (Apple silicon + Intel) trên CI, kiểm tra phần Intel chạy qua Rosetta
+> - [ ] Nhiệt độ trên Mac Intel (cần đọc SMC, hiện để trống)
 > - [ ] Chạy thử trên máy thật: kiểm tra thứ tự core P/E, tên cảm biến nhiệt trên chip của bạn, số công suất (W)
 > - [ ] Xóa bản Swift cũ (`Sources/`, `Tests/`, `Package.swift`) sau khi bản Tauri chạy ổn
 > - [ ] Docker (`docker system df` / `prune`), Xcode simulator (`xcrun simctl delete unavailable`), app đã gỡ

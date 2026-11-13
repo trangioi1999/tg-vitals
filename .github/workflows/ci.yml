@@ -21,7 +21,7 @@ jobs:
         working-directory: app/src-tauri
 
   app:
-    name: tg-vitals.app (macOS)
+    name: tg-vitals.app (macOS universal)
     runs-on: macos-15
     permissions:
       contents: write
@@ -35,33 +35,40 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: app/src-tauri
+      - name: Add the Intel Rust target (universal build)
+        run: rustup target add x86_64-apple-darwin
       - name: Install frontend deps
         run: npm ci
         working-directory: app
       - name: Probe every macOS reader
         run: cargo run -p vitals-core --example probe
         working-directory: app/src-tauri
+      - name: Probe the Intel slice under Rosetta
+        run: cargo run --target x86_64-apple-darwin -p vitals-core --example probe
+        working-directory: app/src-tauri
       - name: Test on a real Mac (samplers, icons, Trash)
         # One test at a time so a crash in system code names the test that caused it.
         run: cargo test -p vitals-core -- --include-ignored --nocapture --test-threads=1
         working-directory: app/src-tauri
-      - name: Build tg-vitals.app (ad-hoc signed)
-        run: npm run tauri build -- --bundles app
+      - name: Build universal tg-vitals.app (Apple silicon + Intel, ad-hoc signed)
+        run: npm run tauri build -- --target universal-apple-darwin --bundles app
         working-directory: app
       - name: Zip
         run: |
-          cd app/src-tauri/target/release/bundle/macos
+          cd app/src-tauri/target/universal-apple-darwin/release/bundle/macos
           codesign --verify --verbose tg-vitals.app
-          ditto -c -k --keepParent tg-vitals.app "$GITHUB_WORKSPACE/tg-vitals-macos-arm64.zip"
+          lipo -info tg-vitals.app/Contents/MacOS/tg-vitals
+          lipo tg-vitals.app/Contents/MacOS/tg-vitals -verify_arch arm64 x86_64
+          ditto -c -k --keepParent tg-vitals.app "$GITHUB_WORKSPACE/tg-vitals-macos-universal.zip"
       - uses: actions/upload-artifact@v4
         with:
-          name: tg-vitals-macos-arm64
-          path: tg-vitals-macos-arm64.zip
+          name: tg-vitals-macos-universal
+          path: tg-vitals-macos-universal.zip
       - name: Release (tags only)
         if: startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" tg-vitals-macos-arm64.zip --title "$GITHUB_REF_NAME" --generate-notes
+        run: gh release create "$GITHUB_REF_NAME" tg-vitals-macos-universal.zip --title "$GITHUB_REF_NAME" --generate-notes
 
   # ---------- Legacy Swift app (reference until the Rust backend is verified) ----------
   swift:
