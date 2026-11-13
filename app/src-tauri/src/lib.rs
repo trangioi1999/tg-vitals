@@ -33,19 +33,23 @@ pub fn run() {
             // Closing the main window keeps the app alive in the menu bar.
             (tray::MAIN, WindowEvent::CloseRequested { api, .. }) => {
                 api.prevent_close();
-                let _ = window.hide();
+                tray::hide_main(window.app_handle());
             }
             (tray::POPUP, WindowEvent::Focused(false)) => tray::on_popup_blur(window.app_handle()),
             _ => {}
         })
         .build(tauri::generate_context!())
         .expect("error while building tg-vitals")
-        .run(|app, event| {
-            #[cfg(target_os = "macos")]
-            if let RunEvent::Reopen { .. } = event {
-                tray::show_main(app);
+        .run(|app, event| match event {
+            // Cmd+Q / Dock "Quit" (code None) only hides the window: the app lives in the menu bar.
+            // The tray's "Thoát tg-vitals" calls `app.exit(0)` (code Some) and really quits.
+            RunEvent::ExitRequested { code: None, api, .. } => {
+                api.prevent_exit();
+                tray::hide_main(app);
             }
-            let _ = (app, event);
+            #[cfg(target_os = "macos")]
+            RunEvent::Reopen { .. } => tray::show_main(app),
+            _ => {}
         });
 }
 
