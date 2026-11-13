@@ -81,6 +81,6 @@ Care chạy độc lập, chỉ khi người dùng bấm:
 
 ## Đóng gói
 
-`./scripts/build-app.sh` (hoặc `cd app && npm run tauri build -- --bundles app`) tạo
-`app/src-tauri/target/release/bundle/macos/tg-vitals.app`, ký ad-hoc (`signingIdentity: "-"`).
+`./scripts/build-app.sh` (hoặc `cd app && npm run tauri build -- --target universal-apple-darwin --bundles app`) tạo
+`app/src-tauri/target/universal-apple-darwin/release/bundle/macos/tg-vitals.app` (universal: arm64 + x86_64), ký ad-hoc (`signingIdentity: "-"`).
 CI làm việc này trên mỗi lần chạy và đính kèm vào Release khi push tag `v*`.

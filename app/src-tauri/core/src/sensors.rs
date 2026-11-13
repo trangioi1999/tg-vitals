@@ -58,8 +58,10 @@ mod mac {
             // Virtual Macs (CI runners) have no thermal sensors and IOHIDEventSystemClientCopyServices
             // itself traps there (CFRelease(NULL) inside CoreFoundation).
             // TGV_FORCE_HID=1 overrides this for debugging.
+            // Intel Macs expose temperatures through SMC, not these IOHID sensors: skip there too.
             let in_vm = crate::sys::sysctl_value::<i32>("kern.hv_vmm_present") == Some(1);
-            let thermal = if in_vm && std::env::var_os("TGV_FORCE_HID").is_none() { None } else { HidThermal::new() };
+            let usable = cfg!(target_arch = "aarch64") && (!in_vm || std::env::var_os("TGV_FORCE_HID").is_some());
+            let thermal = if usable { HidThermal::new() } else { None };
             Self { thermal, ..Self::new_without_thermal() }
         }
 

@@ -1,7 +1,7 @@
 # tg-vitals
 
 > Chỉ số sống của chiếc Mac: theo dõi hệ thống realtime + dọn rác an toàn.
-> Anh em với **tg-studio**. Dùng cá nhân, chỉ chạy trên macOS (Apple silicon). Viết bằng Tauri 2 (Rust + React).
+> Anh em với **tg-studio**. Dùng cá nhân, chạy trên macOS (Apple silicon + Intel). Viết bằng Tauri 2 (Rust + React).
 
 ## Tính năng
 
@@ -21,12 +21,12 @@
 
 ## Yêu cầu
 
-- macOS 14 Sonoma trở lên, Apple silicon
+- macOS 14 Sonoma trở lên, Apple silicon hoặc Intel (bản build là universal)
 - Để build: Node 22, Rust (rustup), Xcode Command Line Tools
 
 ## Cài bản build sẵn
 
-Tải `tg-vitals-macos-arm64.zip` ở tab **Actions** (artifact) hoặc **Releases**, giải nén, kéo vào `/Applications`.
+Tải `tg-vitals-macos-universal.zip` ở tab **Actions** (artifact) hoặc **Releases**, giải nén, kéo vào `/Applications`.
 App chỉ ký ad-hoc (không có Apple Developer ID) nên lần đầu cần gỡ cờ quarantine:
 
 ```bash
@@ -41,7 +41,7 @@ npm ci
 npm run tauri dev           # chạy app khi dev
 npm run dev                 # chỉ xem UI trên trình duyệt, dữ liệu mẫu
 cd src-tauri && cargo test -p vitals-core   # test logic
-../../scripts/build-app.sh  # đóng gói tg-vitals.app
+../../scripts/build-app.sh  # đóng gói tg-vitals.app universal (arm64 + x86_64)
 ```
 
 Đóng cửa sổ chính thì app vẫn chạy trên thanh menu; thoát hẳn bằng menu chuột phải trên icon hoặc nút ⏻ trong popup.
