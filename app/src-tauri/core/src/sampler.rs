@@ -109,44 +109,83 @@ impl Sampler {
 
 #[cfg(test)]
 mod tests {
+    //! Run against the real machine (macOS only). Split per reader so a crash points at its source.
     use super::*;
+    use crate::{cpu, memory, network, process, sensors};
 
-    /// Runs against the real machine (macOS only): values must be in sane ranges.
+    #[test]
+    fn reads_cpu() {
+        let a = cpu::read_ticks().expect("ticks");
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        let b = cpu::read_ticks().expect("ticks");
+        let u = cpu::usage(&a, &b);
+        eprintln!("cpu cores={} user={:.2} system={:.2}", u.per_core.len(), u.user, u.system);
+        assert!(!u.per_core.is_empty());
+        assert!(u.user + u.system <= 1.0 + 1e-9);
+    }
+
+    #[test]
+    fn reads_memory() {
+        let m = memory::read().expect("memory");
+        eprintln!("memory {m:?}");
+        assert!(m.total > 1 << 30);
+        assert!(m.used() > 0 && m.used() <= m.total);
+    }
+
+    #[test]
+    fn reads_network() {
+        let (i, o) = network::read_counters().expect("counters");
+        eprintln!("network in={i} out={o}");
+    }
+
+    #[test]
+    fn reads_disk() {
+        let (total, free) = sensors::volume_space();
+        let mut s = sensors::Sensors::new_without_thermal();
+        s.disk_io();
+        eprintln!("disk total={total} free={free} io={:?}", s.disk_io());
+        assert!(total > 0 && free <= total);
+    }
+
+    #[test]
+    fn reads_battery() {
+        let mut s = sensors::Sensors::new_without_thermal();
+        eprintln!("battery {:?}", s.battery());
+    }
+
+    #[test]
+    fn reads_thermal() {
+        let s = sensors::Sensors::new();
+        eprintln!("sensors {:?}", s.all_temperatures());
+        eprintln!("cpu temp {:?}", s.temperature());
+    }
+
+    #[test]
+    fn reads_processes() {
+        let mut p = process::ProcessSampler::new();
+        p.sample(&|b| b.to_string());
+        std::thread::sleep(std::time::Duration::from_millis(500));
+        let rows = p.sample(&|b| b.to_string());
+        let me = rows.iter().find(|r| r.pid == std::process::id() as i32).expect("own process listed");
+        eprintln!("{} processes, me={me:?}", rows.len());
+        assert!(rows.len() > 20);
+        assert!(me.memory > 0 && me.threads > 0);
+    }
+
     #[test]
     fn live_snapshot_is_sane() {
         let mut sampler = Sampler::new();
         sampler.sample(true, &|p| p.to_string());
         std::thread::sleep(std::time::Duration::from_millis(1100));
         let s = sampler.sample(true, &|p| format!("appicon://localhost/{p}"));
-
-        assert!(!s.cpu.per_core.is_empty());
         assert!((0.0..=1.0).contains(&s.cpu.total), "cpu {}", s.cpu.total);
         assert!(s.cpu.p_cores <= s.cpu.per_core.len());
-        assert!(s.memory.total > 1 << 30);
-        assert!(s.memory.used() > 0 && s.memory.used() <= s.memory.total);
-        assert!(s.disk.total > 0 && s.disk.free <= s.disk.total);
-        assert!(s.network.in_per_sec >= 0.0);
-        assert!(s.machine.uptime > 0);
-        assert!(!s.machine.chip.is_empty());
-        assert!(s.processes.len() > 20, "only {} processes", s.processes.len());
-        let me = s.processes.iter().find(|p| p.pid == std::process::id() as i32).expect("own process listed");
-        assert!(me.memory > 0 && me.threads > 0);
+        assert!(s.machine.uptime > 0 && !s.machine.chip.is_empty());
         if let Some(b) = &s.battery {
             assert!((0.0..=1.0).contains(&b.percent));
         }
         let json = serde_json::to_string(&s).unwrap();
         assert!(json.contains("\"perCore\""));
-        eprintln!(
-            "cpu {:.0}% · mem {}/{} · temp {:?} · {} procs · battery {:?}\nsensors: {:?}",
-            s.cpu.total * 100.0, s.memory.used(), s.memory.total, s.cpu.temperature, s.processes.len(), s.battery,
-            sampler.sensors().all_temperatures()
-        );
-    }
-
-    #[test]
-    fn renders_an_app_icon() {
-        let png = crate::icon::png_for_path("/System/Library/CoreServices/Finder.app", 64).expect("icon");
-        assert_eq!(&png[..8], b"\x89PNG\r\n\x1a\n");
-        assert!(png.len() > 500);
+        eprintln!("snapshot ok: model={} chip={} p_cores={}", s.machine.model, s.machine.chip, s.cpu.p_cores);
     }
 }

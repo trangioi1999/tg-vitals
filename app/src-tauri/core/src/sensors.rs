@@ -55,7 +55,11 @@ mod mac {
 
     impl Sensors {
         pub fn new() -> Self {
-            Self { thermal: HidThermal::new(), disk_previous: None, has_battery: true }
+            Self { thermal: HidThermal::new(), ..Self::new_without_thermal() }
+        }
+
+        pub fn new_without_thermal() -> Self {
+            Self { thermal: None, disk_previous: None, has_battery: true }
         }
 
         pub fn temperature(&self) -> Option<f64> {

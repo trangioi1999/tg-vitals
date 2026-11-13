@@ -39,7 +39,8 @@ jobs:
         run: npm ci
         working-directory: app
       - name: Test on a real Mac (samplers, icons, Trash)
-        run: cargo test -p vitals-core -- --include-ignored --nocapture
+        # One test at a time so a crash in system code names the test that caused it.
+        run: cargo test -p vitals-core -- --include-ignored --nocapture --test-threads=1
         working-directory: app/src-tauri
       - name: Build tg-vitals.app (ad-hoc signed)
         run: npm run tauri build -- --bundles app
