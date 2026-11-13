@@ -46,7 +46,13 @@ pub struct Owned(CFTypeRef);
 
 impl Owned {
     pub fn new(ptr: CFTypeRef) -> Option<Self> {
-        (!ptr.is_null()).then_some(Self(ptr))
+        // Not `then_some(Self(ptr))`: that builds the value eagerly and, when ptr is NULL,
+        // drops it — i.e. calls CFRelease(NULL), which traps.
+        if ptr.is_null() {
+            None
+        } else {
+            Some(Self(ptr))
+        }
     }
     pub fn get(&self) -> CFTypeRef {
         self.0
@@ -178,19 +184,13 @@ impl HidThermal {
         use core_foundation::number::CFNumber;
         // SAFETY: create rule; matching dict outlives the call.
         unsafe {
-            let trace = std::env::var_os("TGV_TRACE_HID").is_some();
-            let mark = |m: &str| if trace { eprintln!("  hid: {m}") };
-            mark("create");
             let client = Owned::new(IOHIDEventSystemClientCreate(kCFAllocatorDefault) as CFTypeRef)?;
-            mark("matching");
             let matching = CFDictionary::from_CFType_pairs(&[
                 (CFString::new("PrimaryUsagePage"), CFNumber::from(0xff00i32)),
                 (CFString::new("PrimaryUsage"), CFNumber::from(5i32)),
             ]);
             IOHIDEventSystemClientSetMatching(client.get() as *mut c_void, matching.as_concrete_TypeRef());
-            mark("copy services");
             let services = Owned::new(IOHIDEventSystemClientCopyServices(client.get() as *mut c_void) as CFTypeRef)?;
-            mark("ok");
             Some(Self { client, services })
         }
     }
@@ -220,5 +220,24 @@ impl HidThermal {
             }
         }
         out
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Regression: a NULL result must never reach CFRelease (crashed the app on launch).
+    #[test]
+    fn null_is_not_owned_or_released() {
+        assert!(Owned::new(std::ptr::null()).is_none());
+    }
+
+    /// Runs on every Mac, including CI VMs where the HID service list comes back NULL.
+    #[test]
+    fn thermal_client_never_crashes() {
+        if let Some(t) = HidThermal::new() {
+            let _ = t.read();
+        }
     }
 }
