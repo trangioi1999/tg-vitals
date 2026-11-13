@@ -1,7 +1,7 @@
 # tg-vitals
 
 > Chỉ số sống của chiếc Mac: theo dõi hệ thống realtime + dọn rác an toàn.
-> Anh em với **tg-studio**. Dùng cá nhân, chỉ chạy trên macOS (Apple silicon).
+> Anh em với **tg-studio**. Dùng cá nhân, chỉ chạy trên macOS (Apple silicon). Viết bằng Tauri 2 (Rust + React).
 
 ## Tính năng
 
@@ -22,23 +22,33 @@
 ## Yêu cầu
 
 - macOS 14 Sonoma trở lên, Apple silicon
-- Xcode 16+ (hoặc Swift 6 Command Line Tools)
+- Để build: Node 22, Rust (rustup), Xcode Command Line Tools
+
+## Cài bản build sẵn
+
+Tải `tg-vitals-macos-arm64.zip` ở tab **Actions** (artifact) hoặc **Releases**, giải nén, kéo vào `/Applications`.
+App chỉ ký ad-hoc (không có Apple Developer ID) nên lần đầu cần gỡ cờ quarantine:
+
+```bash
+xattr -dr com.apple.quarantine /Applications/tg-vitals.app
+```
 
 ## Chạy thử
 
 ```bash
-swift build
-swift run TGVitals          # chạy nhanh khi dev (sẽ có icon ở Dock)
-swift test                  # chạy test
-./scripts/bundle.sh         # đóng gói thành build/tg-vitals.app (ẩn khỏi Dock)
-open build/tg-vitals.app
+cd app
+npm ci
+npm run tauri dev           # chạy app khi dev
+npm run dev                 # chỉ xem UI trên trình duyệt, dữ liệu mẫu
+cd src-tauri && cargo test -p vitals-core   # test logic
+../../scripts/build-app.sh  # đóng gói tg-vitals.app
 ```
 
-Mở bằng Xcode: `open Package.swift`.
+Đóng cửa sổ chính thì app vẫn chạy trên thanh menu; thoát hẳn bằng menu chuột phải trên icon hoặc nút ⏻ trong popup.
 
 Một số tính năng cần quyền:
-- **Full Disk Access** (System Settings → Privacy & Security) để phần Care quét được hết thư mục.
-- **sudo** cho `powermetrics` (năng lượng theo app, GPU) — xem `docs/TECH_STACK.md`.
+- **Full Disk Access** (System Settings → Privacy & Security) để phần Dọn dẹp quét được hết thư mục.
+- Process của user khác (root) có thể thiếu số RAM / disk I/O vì macOS không cho app thường đọc.
 
 ## Tài liệu
 
@@ -48,3 +58,4 @@ Một số tính năng cần quyền:
 | [`docs/TECH_STACK.md`](docs/TECH_STACK.md) | Công nghệ, nguồn dữ liệu cho từng chỉ số |
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Cấu trúc thư mục, luồng dữ liệu, quy ước |
 | [`CLAUDE.md`](CLAUDE.md) | Hướng dẫn cho AI agent khi làm việc trong repo |
+| [`AGENTS.md`](AGENTS.md) | Như trên, cho Codex |
