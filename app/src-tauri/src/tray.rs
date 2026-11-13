@@ -37,20 +37,71 @@ pub fn create(app: &tauri::App) -> tauri::Result<()> {
     Ok(())
 }
 
-/// Menu bar text, e.g. `23% 61% ↓1.2M 47°`.
-pub fn title(s: &Snapshot) -> String {
+/// Label/value pairs keep the menu bar compact without making CPU and RAM ambiguous.
+fn metrics(s: &Snapshot) -> Vec<(&'static str, String)> {
     let mem = if s.memory.total > 0 { s.memory.used() as f64 / s.memory.total as f64 } else { 0.0 };
-    let mut t = format!("{:.0}% {:.0}% ↓{}", s.cpu.total * 100.0, mem * 100.0, compact_bytes(s.network.in_per_sec));
-    if let Some(temp) = s.cpu.temperature {
-        t.push_str(&format!(" {temp:.0}°"));
+    let mut items = vec![
+        ("CPU", format!("{:.0}%", s.cpu.total * 100.0)),
+        ("RAM", format!("{:.0}%", mem * 100.0)),
+        ("↓", compact_bytes(s.network.in_per_sec)),
+    ];
+    if let Some(temp) = s.cpu.temperature.filter(|t| t.is_finite()) {
+        items.push(("°C", format!("{temp:.0}")));
     }
-    t
+    items
+}
+
+pub fn title(s: &Snapshot) -> String {
+    metrics(s).iter().map(|(label, value)| format!("{label} {value}"))
+        .collect::<Vec<_>>().join("   ")
 }
 
 pub fn update_title(app: &AppHandle, s: &Snapshot) {
-    if let Some(tray) = app.tray_by_id(TRAY_ID) {
-        let _ = tray.set_title(Some(title(s)));
+    let Some(tray) = app.tray_by_id(TRAY_ID) else { return };
+    let plain = title(s);
+    let tooltip = format!(
+        "tg-vitals\nCPU: {:.0}%\nRAM: {}\nTải xuống: {}/s\nTải lên: {}/s\nNhiệt độ: {}\nBấm để xem chi tiết",
+        s.cpu.total * 100.0, metrics(s)[1].1,
+        compact_bytes(s.network.in_per_sec), compact_bytes(s.network.out_per_sec),
+        s.cpu.temperature.filter(|t| t.is_finite()).map(|t| format!("{t:.0} °C")).unwrap_or_else(|| "Chưa có dữ liệu".into())
+    );
+    let _ = tray.set_tooltip(Some(tooltip));
+    #[cfg(target_os = "macos")]
+    {
+        let items = metrics(s);
+        // Tauri dispatches this entire closure to the main thread. Apply plain text first
+        // so the tray backend updates its hit-test dimensions, then style in the same turn.
+        let _ = tray.with_inner_tray_icon(move |inner| {
+            use objc2::{AnyThread, MainThreadMarker};
+            use objc2_app_kit::{NSColor, NSFont, NSFontAttributeName, NSForegroundColorAttributeName};
+            use objc2_foundation::{NSMutableAttributedString, NSRange, NSString};
+            inner.set_title(Some(&plain));
+            let Some(mtm) = MainThreadMarker::new() else { return };
+            let Some(item) = inner.ns_status_item() else { return };
+            let Some(button) = item.button(mtm) else { return };
+            let text = NSMutableAttributedString::initWithString(
+                NSMutableAttributedString::alloc(), &NSString::from_str(&plain));
+            let whole = NSRange::new(0, plain.encode_utf16().count());
+            let font = NSFont::monospacedDigitSystemFontOfSize_weight(11.0, 0.23);
+            let colors = [NSColor::systemBlueColor(), NSColor::systemGreenColor(),
+                NSColor::systemTealColor(), NSColor::systemOrangeColor()];
+            // SAFETY: Font/color attributes receive the documented AppKit object types.
+            // Every range is measured in UTF-16, matching NSString, and stays in bounds.
+            unsafe {
+                text.addAttribute_value_range(NSFontAttributeName, &font, whole);
+                text.addAttribute_value_range(NSForegroundColorAttributeName, &NSColor::labelColor(), whole);
+                let mut offset = 0;
+                for (i, (label, value)) in items.iter().enumerate() {
+                    let count = label.encode_utf16().count();
+                    text.addAttribute_value_range(NSForegroundColorAttributeName, &colors[i], NSRange::new(offset, count));
+                    offset += count + 1 + value.encode_utf16().count() + 3;
+                }
+            }
+            button.setAttributedTitle(&text);
+        });
     }
+    #[cfg(not(target_os = "macos"))]
+    let _ = tray.set_title(Some(plain));
 }
 
 pub fn show_main(app: &AppHandle) {
