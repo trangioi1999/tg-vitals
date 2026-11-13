@@ -38,6 +38,9 @@ jobs:
       - name: Install frontend deps
         run: npm ci
         working-directory: app
+      - name: Probe every macOS reader
+        run: cargo run -p vitals-core --example probe
+        working-directory: app/src-tauri
       - name: Test on a real Mac (samplers, icons, Trash)
         # One test at a time so a crash in system code names the test that caused it.
         run: cargo test -p vitals-core -- --include-ignored --nocapture --test-threads=1
