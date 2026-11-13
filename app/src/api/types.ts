@@ -1,4 +1,4 @@
-// Shapes shared with the Rust backend (src-tauri/src/model.rs). Keep both in sync.
+// Shapes shared with the Rust backend (src-tauri/core/src/model.rs, care/mod.rs). Keep both in sync.
 
 export interface CpuInfo {
   total: number;      // 0..1
@@ -57,6 +57,8 @@ export interface ProcessRow {
   diskRead: number;   // bytes total
   diskWritten: number;
   startedAt: number;  // unix seconds
+  /** Executable path; empty when macOS refuses to tell. */
+  path: string;
 }
 
 export interface Snapshot {
@@ -80,7 +82,7 @@ export interface CleanupItem {
 export interface CleanupGroup {
   id: string;
   title: string;
-  category: "system" | "xcode" | "devtools" | "projects";
+  category: "system" | "xcode" | "devtools" | "projects" | "files";
   note: string;
   safe: boolean;      // pre-selected
   items: CleanupItem[];

@@ -2,7 +2,7 @@ import {
   Battery, Cpu, HardDrive, Info, LayoutGrid, List, MemoryStick, Settings, Sparkles, Wifi,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import type { Snapshot } from "../api";
+import { isTauri, type Snapshot } from "../api";
 import { pct, rate, uptime } from "../format";
 import { ACCENT, IconTile } from "./ui";
 
@@ -46,7 +46,7 @@ const SECTIONS: { title?: string; items: Item[] }[] = [
 export function Sidebar({ page, onSelect, snapshot }: { page: PageId; onSelect: (p: PageId) => void; snapshot: Snapshot | null }) {
   return (
     <aside className="sidebar">
-      <div className="traffic" data-tauri-drag-region>
+      <div className={`traffic ${isTauri ? "native" : ""}`} data-tauri-drag-region>
         <span /><span /><span />
       </div>
       <nav>

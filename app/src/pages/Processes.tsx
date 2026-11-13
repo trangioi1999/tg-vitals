@@ -20,7 +20,8 @@ const COLUMNS: { key: SortKey; label: string; align?: "right" }[] = [
 
 export function Processes({ s, h, search, filter }: { s: Snapshot; h: History; search: string; filter: Filter }) {
   const [sort, setSort] = useState<{ key: SortKey; desc: boolean }>({ key: "cpu", desc: true });
-  const [selected, setSelected] = useState<number | null>(s.processes[1]?.pid ?? null);
+  const [selected, setSelected] = useState<number | null>(
+    () => [...s.processes].filter((p) => p.kind === "app").sort((a, b) => b.cpu - a.cpu)[0]?.pid ?? null);
 
   const rows = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -65,7 +66,7 @@ export function Processes({ s, h, search, filter }: { s: Snapshot; h: History; s
           </tbody>
         </table>
       </div>
-      {current && <Inspector p={current} h={h} onClose={() => setSelected(null)} />}
+      {current && <Inspector key={current.pid} p={current} h={h} onClose={() => setSelected(null)} />}
     </div>
   );
 }
@@ -73,6 +74,8 @@ export function Processes({ s, h, search, filter }: { s: Snapshot; h: History; s
 function Inspector({ p, h, onClose }: { p: ProcessRow; h: History; onClose: () => void }) {
   const hist = h.perProcess.get(p.pid);
   const [confirmForce, setConfirmForce] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const kill = (force: boolean) => api.killProcess(p.pid, force).then(() => setError(null), (e) => setError(String(e)));
 
   return (
     <aside className="inspector">
@@ -86,12 +89,14 @@ function Inspector({ p, h, onClose }: { p: ProcessRow; h: History; onClose: () =
       </header>
 
       <div className="insp-actions">
-        <button className="btn" onClick={() => api.killProcess(p.pid, false)}>Thoát</button>
-        <button className="btn danger" onClick={() => (confirmForce ? api.killProcess(p.pid, true) : setConfirmForce(true))}>
+        <button className="btn" onClick={() => kill(false)}>Thoát</button>
+        <button className="btn danger" onClick={() => (confirmForce ? kill(true) : setConfirmForce(true))}>
           {confirmForce ? "Chắc chắn?" : "Buộc thoát"}
         </button>
-        <button className="btn square" title="Hiện trong Finder"><FolderOpen size={15} /></button>
+        <button className="btn square" title="Hiện trong Finder" disabled={!p.path}
+          onClick={() => api.revealPath(p.path).catch((e) => setError(String(e)))}><FolderOpen size={15} /></button>
       </div>
+      {error && <div className="insp-error">{error}</div>}
 
       <div className="mini" style={{ background: `${ACCENT.cpu}1a` }}>
         <div className="mini-head"><span style={{ color: ACCENT.cpu }}>CPU</span><b>{p.cpu.toFixed(0)}%</b></div>

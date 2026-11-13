@@ -1,7 +1,7 @@
-import { Box, Check, ChevronRight, Code2, FileText, Hammer, Package, Sparkles, Trash2 } from "lucide-react";
+import { Archive, Box, Check, ChevronRight, Code2, FileText, Film, Hammer, Package, Smartphone, Sparkles, Trash2 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
-import { api, type CleanupGroup, type TrashReport } from "../api";
+import { useMemo, useState } from "react";
+import { api, isTauri, type CleanupGroup, type TrashReport } from "../api";
 import { ACCENT, IconTile } from "../components/ui";
 import { bytes, bytesParts } from "../format";
 
@@ -13,7 +13,17 @@ const GROUP_STYLE: Record<string, { icon: LucideIcon; color: string }> = {
   npm: { icon: Package, color: ACCENT.gpu },
   homebrew: { icon: Package, color: ACCENT.disk },
   "user-logs": { icon: FileText, color: ACCENT.gray },
+  "xcode-device-support": { icon: Smartphone, color: ACCENT.cpu },
+  "xcode-archives": { icon: Archive, color: ACCENT.cpu },
+  pnpm: { icon: Package, color: ACCENT.gpu },
+  pip: { icon: Package, color: ACCENT.network },
+  cocoapods: { icon: Package, color: ACCENT.gpu },
+  gradle: { icon: Package, color: ACCENT.memory },
+  "large-files": { icon: Film, color: ACCENT.purple },
 };
+
+/** /Users/name/Library/Caches → ~/Library/Caches */
+const tilde = (path: string) => path.replace(/^\/Users\/[^/]+/, "~");
 
 export function Cleanup() {
   const [groups, setGroups] = useState<CleanupGroup[] | null>(null);
@@ -32,8 +42,6 @@ export function Cleanup() {
     setBusy(false);
   };
 
-  useEffect(() => { scan(); }, []);
-
   const all = useMemo(() => groups?.flatMap((g) => g.items) ?? [], [groups]);
   const selectedBytes = all.filter((i) => selected.has(i.path)).reduce((a, i) => a + i.size, 0);
   const totalBytes = all.reduce((a, i) => a + i.size, 0);
@@ -51,7 +59,7 @@ export function Cleanup() {
     setConfirming(false);
     setBusy(true);
     const r = await api.trash([...selected]);
-    setReport({ ...r, bytes: r.bytes || selectedBytes });
+    setReport({ ...r, bytes: isTauri ? r.bytes : selectedBytes });
     setGroups(null);
     setBusy(false);
   };
@@ -65,13 +73,20 @@ export function Cleanup() {
             <>
               <div className="big-label">Đã chuyển vào Thùng rác</div>
               <div className="big-row"><span className="big-value">{bytesParts(report.bytes)[0]}</span><span className="big-unit">{bytesParts(report.bytes)[1]}</span></div>
-              <div className="hero-sub">{report.trashed} mục · vẫn khôi phục được từ Thùng rác cho tới khi bạn đổ nó</div>
+              <div className="hero-sub">
+                {report.trashed} mục · vẫn khôi phục được từ Thùng rác cho tới khi bạn đổ nó
+                {report.failed.length > 0 && ` · ${report.failed.length} mục không dọn được`}
+              </div>
             </>
           ) : (
             <>
-              <div className="big-label">{busy ? "Đang quét…" : "Có thể dọn"}</div>
-              <div className="big-row"><span className="big-value">{busy && !groups ? "—" : bigValue}</span><span className="big-unit">{busy && !groups ? "" : bigUnit}</span></div>
-              <div className="hero-sub">Đã chọn {bytes(selectedBytes)} trong {bytes(totalBytes)} tìm thấy · mọi thứ đều vào Thùng rác, không xóa vĩnh viễn</div>
+              <div className="big-label">{busy ? "Đang quét…" : groups ? "Có thể dọn" : "Chưa quét"}</div>
+              <div className="big-row"><span className="big-value">{!groups ? "—" : bigValue}</span><span className="big-unit">{!groups ? "" : bigUnit}</span></div>
+              <div className="hero-sub">
+                {groups
+                  ? `Đã chọn ${bytes(selectedBytes)} trong ${bytes(totalBytes)} tìm thấy · mọi thứ đều vào Thùng rác, không xóa vĩnh viễn`
+                  : "Bấm Quét để tìm cache, log, build tạm và file lớn · chỉ đọc, chưa xóa gì"}
+              </div>
             </>
           )}
         </div>
@@ -94,6 +109,14 @@ export function Cleanup() {
           ))}
         </div>
       )}
+
+      {report && report.failed.length > 0 && (
+        <ul className="failures">
+          {report.failed.map((f) => <li key={f.path}><span className="item-path">{tilde(f.path)}</span><span>{f.reason}</span></li>)}
+        </ul>
+      )}
+
+      {groups && groups.length === 0 && <div className="empty">Không tìm thấy gì để dọn 🎉</div>}
 
       <div className="groups">
         {groups?.map((g) => {
@@ -126,7 +149,7 @@ export function Cleanup() {
                         {selected.has(i.path) && <Check size={10} strokeWidth={3} />}
                       </button>
                       <span className="item-name">{i.name}</span>
-                      <span className="item-path">{i.path}</span>
+                      <span className="item-path">{tilde(i.path)}</span>
                       <span className="item-size">{bytes(i.size)}</span>
                     </li>
                   ))}

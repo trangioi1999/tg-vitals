@@ -3,11 +3,69 @@ name: CI
 on:
   push:
     branches: [main]
+    tags: ["v*"]
   pull_request:
   workflow_dispatch:
 
 jobs:
-  build:
+  # ---------- Tauri app (current) ----------
+  core-tests:
+    name: vitals-core tests (Linux, pure logic)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: app/src-tauri
+      - run: cargo test -p vitals-core
+        working-directory: app/src-tauri
+
+  app:
+    name: tg-vitals.app (macOS)
+    runs-on: macos-15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: app/src-tauri
+      - name: Install frontend deps
+        run: npm ci
+        working-directory: app
+      - name: Probe every macOS reader
+        run: cargo run -p vitals-core --example probe
+        working-directory: app/src-tauri
+      - name: Test on a real Mac (samplers, icons, Trash)
+        # One test at a time so a crash in system code names the test that caused it.
+        run: cargo test -p vitals-core -- --include-ignored --nocapture --test-threads=1
+        working-directory: app/src-tauri
+      - name: Build tg-vitals.app (ad-hoc signed)
+        run: npm run tauri build -- --bundles app
+        working-directory: app
+      - name: Zip
+        run: |
+          cd app/src-tauri/target/release/bundle/macos
+          codesign --verify --verbose tg-vitals.app
+          ditto -c -k --keepParent tg-vitals.app "$GITHUB_WORKSPACE/tg-vitals-macos-arm64.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tg-vitals-macos-arm64
+          path: tg-vitals-macos-arm64.zip
+      - name: Release (tags only)
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" tg-vitals-macos-arm64.zip --title "$GITHUB_REF_NAME" --generate-notes
+
+  # ---------- Legacy Swift app (reference until the Rust backend is verified) ----------
+  swift:
+    name: Swift (legacy)
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
@@ -15,28 +73,3 @@ jobs:
         run: swift build
       - name: Test
         run: swift test
-
-  snapshots:
-    runs-on: macos-15
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v4
-      - name: Build
-        run: swift build
-      - name: Render UI snapshots
-        run: |
-          .build/debug/TGVitals --snapshot "$PWD/snapshots" &
-          PID=$!
-          for i in $(seq 1 120); do kill -0 $PID 2>/dev/null || break; sleep 1; done
-          kill $PID 2>/dev/null || true
-          ls -la snapshots
-      - name: Publish snapshots to the `ui-snapshots` branch
-        if: github.event_name != 'pull_request'
-        run: |
-          cd snapshots
-          git init -q -b ui-snapshots
-          git add *.png
-          git -c user.name="github-actions" -c user.email="github-actions@users.noreply.github.com" \
-            commit -qm "UI snapshots for ${GITHUB_SHA::7}"
-          git push -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}" ui-snapshots

@@ -2,11 +2,16 @@
 > Frontend nằm ở `app/` (đã xong, đang chạy dữ liệu mẫu). Bản Swift cũ giữ lại để tham khảo cho tới khi backend Rust thay thế.
 >
 > **Việc tiếp theo:**
-> - [ ] Backend Rust: CPU, RAM, disk, mạng, process, pin (crate `sysinfo` + IOKit), lệnh `snapshot` / `kill_process`
-> - [ ] Dọn rác bằng Rust: `scan_cleanup`, `trash_paths` (chỉ chuyển vào Thùng rác, giữ luật PathGuard)
-> - [ ] **Menu bar (tray):** item trên thanh menu hiện CPU / RAM / mạng / nhiệt độ, bấm vào mở popup nhỏ kiểu Pulse
-> - [ ] Icon app thật cho từng process
-> - [ ] CI build `tg-vitals.app` (ký ad-hoc, không cần Apple Developer) để tải về dùng
+> - [x] Backend Rust (`app/src-tauri/core`): CPU, RAM, disk, mạng, process, pin — gọi thẳng Mach/libproc/sysctl/IOKit
+>   (bỏ `sysinfo` vì không cho `phys_footprint`, user/system CPU, bộ đếm mạng 64-bit). Lệnh `snapshot` / `kill_process` / `reveal_path`
+> - [x] Dọn rác bằng Rust: `scan_cleanup`, `trash_paths` (chỉ `trashItemAtURL`, PathGuard, chỉ xóa được path có trong lần quét gần nhất)
+> - [x] **Menu bar (tray):** item trên thanh menu hiện CPU / RAM / mạng / nhiệt độ, bấm vào mở popup nhỏ kiểu Pulse
+> - [x] Icon app thật cho từng process (scheme `appicon://`, render bằng NSWorkspace, có cache)
+> - [x] CI build `tg-vitals.app` (ký ad-hoc, không cần Apple Developer) để tải về dùng — artifact mỗi lần chạy, Release khi push tag `v*`
+> - [ ] Chạy thử trên máy thật: kiểm tra thứ tự core P/E, tên cảm biến nhiệt trên chip của bạn, số công suất (W)
+> - [ ] Xóa bản Swift cũ (`Sources/`, `Tests/`, `Package.swift`) sau khi bản Tauri chạy ổn
+> - [ ] Docker (`docker system df` / `prune`), Xcode simulator (`xcrun simctl delete unavailable`), app đã gỡ
+> - [ ] Mạng theo app / số connection (`nettop`), năng lượng theo app (`powermetrics`, cần root), GPU %
 
 # Kế hoạch phát triển tg-vitals
 
@@ -24,7 +29,7 @@ Ký hiệu: `[x]` xong · `[ ]` chưa làm · ⚠️ phần khó / rủi ro
 - [x] Script đóng gói `.app` (`scripts/bundle.sh`, `LSUIElement` ẩn khỏi Dock)
 - [x] Test cho phần logic thuần (ring buffer, tính % CPU, format byte)
 - [ ] Build thành công lần đầu trên máy, sửa lỗi compile nếu có
-- [ ] Thêm app icon (`Resources/AppIcon.icns`)
+- [x] Thêm app icon (`app/src-tauri/icons`, nguồn SVG trong `icons/source`)
 - [x] GitHub Actions: `swift build` + `swift test` trên macOS
 
 ## M1 — Monitor cơ bản (2–3 ngày)
@@ -38,10 +43,10 @@ Mục tiêu: thay được Activity Monitor cho nhu cầu xem nhanh.
 - [x] `SystemMonitor`: timer 1s, giữ lịch sử 60 điểm
 - [x] Menu bar: CPU% + biểu đồ mini
 - [x] Cửa sổ chính dạng sidebar: Tổng quan · Process · Dọn dẹp
-- [ ] Thêm trang riêng: CPU · Memory · Network
+- [x] Thêm trang riêng: CPU · Memory · Network (UI Tauri)
 - [ ] Biểu đồ realtime bằng Swift Charts cho từng trang
 - [x] Processes: sort theo cột, ô search
-- [ ] Icon app cho từng process (`NSRunningApplication`)
+- [x] Icon app cho từng process (Tauri: `NSWorkspace.iconForFile`)
 - [x] Quit / Force quit (`kill(pid, SIGTERM/SIGKILL)`, hỏi xác nhận khi force quit)
 - [ ] Đo chính app: mục tiêu < 2% một core khi mở cửa sổ, < 0.5% khi chỉ có menu bar
 
@@ -54,11 +59,11 @@ Mục tiêu: dọn được vài chục GB rác dev mà không bao giờ mất d
 - [x] `Trasher`: chỉ chuyển vào Thùng rác qua `FileManager.trashItem`
 - [x] `PathGuard`: chặn mọi đường dẫn ngoài home và thư mục nhạy cảm (có test)
 - [x] Màn hình Care: nút **Quét** → danh sách nhóm theo loại, dung lượng, tick chọn → **Dọn**
-- [~] `node_modules` finder (logic có sẵn trong `CleanupScanner.staleNodeModules`, chưa nối UI): quét các thư mục gốc cấu hình được (`~/Projects`, `~/code`…), chỉ gợi ý project không sửa > 30 ngày
-- [ ] Xcode: DerivedData, Archives, iOS DeviceSupport, simulator không dùng (`xcrun simctl delete unavailable`)
-- [ ] Cache tool dev: Homebrew (`brew cleanup -n` để xem trước), npm, pnpm, yarn, pip, Gradle, CocoaPods
+- [x] `node_modules` finder (Rust `Scanner::stale_node_modules`, gốc: `~/WebstormProjects`, `~/Projects`, `~/code`…): quét các thư mục gốc cấu hình được (`~/Projects`, `~/code`…), chỉ gợi ý project không sửa > 30 ngày
+- [~] Xcode: DerivedData, Archives, iOS DeviceSupport (xong) · simulator không dùng (chưa) (`xcrun simctl delete unavailable`)
+- [x] Cache tool dev: Homebrew, npm, pnpm, yarn, pip, Gradle, CocoaPods (quét thư mục cache)
 - [ ] Docker: hiện kết quả `docker system df`, dọn bằng `docker system prune` (hỏi xác nhận riêng)
-- [ ] File lớn: liệt kê file > 500MB trong `~/Downloads`, `~/Desktop`, `~/Movies`
+- [x] File lớn: liệt kê file > 500MB trong `~/Downloads`, `~/Desktop`, `~/Movies`
 - [ ] App đã gỡ: so `~/Library/Application Support` + `Preferences` với app đang cài
 - [ ] Hướng dẫn cấp Full Disk Access khi bị từ chối quyền
 - [ ] Lưu lịch sử dọn (ngày, dung lượng giải phóng) ra file JSON
@@ -70,21 +75,21 @@ Mục tiêu: dọn được vài chục GB rác dev mà không bao giờ mất d
 
 ## M3 — Monitor nâng cao (4–6 ngày)
 
-- [ ] CPU: tách P-core / E-core (`sysctl hw.perflevel0/1.logicalcpu`)
-- [ ] Memory pressure (`kern.memorystatus_vm_pressure_level`), swap (`vm.swapusage`)
+- [x] CPU: tách P-core / E-core (`sysctl hw.perflevel0/1.logicalcpu`)
+- [x] Memory pressure (`kern.memorystatus_vm_pressure_level`), swap (`vm.swapusage`)
 - [ ] Network theo app + từng connection ⚠️ — đọc `nettop -P -L 1 -J bytes_in,bytes_out` hoặc `-m tcp`
-- [ ] Disk I/O theo hệ thống (IOKit `IOBlockStorageDriver` statistics) + theo app (`proc_pid_rusage` `ri_diskio_*`)
-- [ ] Bộ đếm mạng 64-bit qua `sysctl NET_RT_IFLIST2` (thay `getifaddrs` vốn tràn ở 4GB)
+- [x] Disk I/O theo hệ thống (IOKit `IOBlockStorageDriver` statistics) + theo app (`proc_pid_rusage` `ri_diskio_*`)
+- [x] Bộ đếm mạng 64-bit qua `sysctl NET_RT_IFLIST2` (thay `getifaddrs` vốn tràn ở 4GB)
 - [ ] Process: lịch sử của một process, cây parent–children, nhóm theo app (bundle)
-- [ ] RAM process theo `phys_footprint` (`proc_pid_rusage`) cho khớp Activity Monitor
+- [x] RAM process theo `phys_footprint` (`proc_pid_rusage`) cho khớp Activity Monitor
 
 ## M4 — Năng lượng & nhiệt (3–5 ngày) ⚠️
 
-- [ ] Pin: health, cycle count, đang sạc (IOKit `AppleSmartBattery`)
+- [x] Pin: health, cycle count, đang sạc (IOKit `AppleSmartBattery`)
 - [ ] Công suất toàn máy + năng lượng theo app ⚠️ — `powermetrics` cần root:
   - phương án A: helper chạy bằng `sudo` lúc mở app (đơn giản, dùng cá nhân OK)
   - phương án B: LaunchDaemon cài một lần, ghi số liệu ra socket/file
-- [ ] Nhiệt độ ⚠️ — đọc SMC/IOHID (tham khảo code mở của *Stats* — exelban/stats, MIT)
+- [~] Nhiệt độ ⚠️ — đã đọc IOHID (cần kiểm tra trên máy thật), chưa có SMC (tham khảo code mở của *Stats* — exelban/stats, MIT)
 - [ ] GPU: % sử dụng (IOKit `IOAccelerator` → `PerformanceStatistics`)
 - [ ] Cái gì đang giữ máy không ngủ (`pmset -g assertions`)
 

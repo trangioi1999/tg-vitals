@@ -1,0 +1,30 @@
+[workspace]
+members = [".", "core"]
+resolver = "2"
+
+[package]
+name = "tg-vitals"
+version = "0.3.0"
+edition = "2021"
+description = "Chỉ số sống của chiếc Mac"
+publish = false
+
+[lib]
+name = "tg_vitals_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+vitals-core = { path = "core" }
+tauri = { version = "2", features = ["tray-icon", "image-png", "macos-private-api"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+libc = "0.2"
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+strip = true

@@ -1,3 +1,6 @@
+> **Cập nhật 11/2026:** app đã chuyển sang **Tauri 2 (Rust + React)**. Bảng *nguồn dữ liệu* bên dưới vẫn đúng —
+> backend Rust (`app/src-tauri/core`) gọi đúng các API đó qua `libc`, `core-foundation` và `objc2`. Phần "Tổng quan" là của bản Swift cũ.
+
 # Tech stack
 
 ## Tổng quan

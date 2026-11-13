@@ -29,6 +29,7 @@ const PROCS: Omit<ProcessRow, "cpu" | "memory">[] = [
   diskRead: (20 + i * 37) * MB,
   diskWritten: (5 + i * 11) * MB,
   startedAt: Date.now() / 1000 - 3600 * (2 + i),
+  path: kind === "app" ? `/Applications/${name}.app/Contents/MacOS/${name}` : `/usr/bin/${name}`,
 }));
 
 const BASE: [number, number][] = [
