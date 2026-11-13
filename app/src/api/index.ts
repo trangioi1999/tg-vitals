@@ -20,6 +20,13 @@ export const api = {
 
   killProcess: (pid: number, force: boolean): Promise<void> =>
     isTauri ? call("kill_process", { pid, force }) : Promise.resolve(),
+
+  revealPath: (path: string): Promise<void> => (isTauri ? call("reveal_path", { path }) : Promise.resolve()),
+
+  /** Menu bar popup → open the main window. */
+  showMain: (): Promise<void> => (isTauri ? call("show_main") : Promise.resolve()),
+
+  quit: (): Promise<void> => (isTauri ? call("quit_app") : Promise.resolve()),
 };
 
 export type * from "./types";

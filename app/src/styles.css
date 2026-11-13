@@ -232,3 +232,35 @@ td.hot { color: #ff453a; font-weight: 700; }
 
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-thumb { background: #ffffff1f; border-radius: 5px; border: 2px solid transparent; background-clip: padding-box; }
+
+/* ---------- Native window (Tauri) ---------- */
+/* Real traffic lights are drawn by macOS at the same spot. */
+.traffic.native span { visibility: hidden; }
+.insp-error { color: #ff453a; font-size: 12px; margin: -6px 0 12px; }
+.failures { list-style: none; margin: 0 0 12px; padding: 10px 14px; border-radius: 10px; background: #ff453a14; display: grid; gap: 6px; }
+.failures li { display: flex; gap: 10px; font-size: 12px; color: #ff453a; }
+.empty { color: var(--muted); text-align: center; padding: 40px 0; }
+
+/* ---------- Menu bar popup ---------- */
+html.tray-window, html.tray-window body, html.tray-window #root { background: transparent; }
+.tray {
+  height: 100%; display: flex; flex-direction: column; gap: 10px; padding: 12px;
+  background: #1c1c1ef5; border: 1px solid #ffffff1a; border-radius: 12px;
+  -webkit-backdrop-filter: blur(30px); backdrop-filter: blur(30px);
+}
+.tray-loading { margin: auto; color: var(--muted); }
+.tray-head { display: flex; align-items: center; justify-content: space-between; padding: 0 2px; }
+.tray-title { font-weight: 700; font-size: 14px; }
+.tray-sub { font-size: 11px; color: var(--muted); margin-top: 1px; }
+.tray-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.tray-tile { background: var(--card); border-radius: 10px; padding: 9px 10px 10px; min-width: 0; }
+.tray-tile-head { display: flex; align-items: center; gap: 6px; font-weight: 700; font-size: 12px; margin-bottom: 4px; }
+.tray-value { font-size: 24px; font-weight: 700; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; line-height: 1.1; }
+.big-unit.small { font-size: 12px; }
+.tray-note { font-size: 11.5px; color: var(--muted); margin-top: 6px; font-variant-numeric: tabular-nums; }
+.tray-tile .dot-chart { margin-top: 6px; }
+.tray-section { font-size: 11px; font-weight: 600; color: var(--faint); padding: 2px 2px 0; }
+.tray-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; flex: 1; }
+.tray-list li { display: flex; align-items: center; gap: 8px; height: 26px; padding: 0 4px; border-radius: 6px; }
+.tray-list li:hover { background: #ffffff0d; }
+.tray-foot { display: grid; grid-template-columns: 1fr auto; gap: 8px; }

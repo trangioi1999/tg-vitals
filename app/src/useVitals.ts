@@ -44,19 +44,30 @@ export function useVitals(paused: boolean) {
       push(h.netIn, s.network.inPerSec);
       push(h.netOut, s.network.outPerSec);
       push(h.power, s.battery?.powerDraw ?? 0);
+      const alive = new Set<number>();
       for (const p of s.processes) {
+        alive.add(p.pid);
         const entry = h.perProcess.get(p.pid) ?? { cpu: [], memory: [] };
         push(entry.cpu, p.cpu);
         push(entry.memory, p.memory);
         h.perProcess.set(p.pid, entry);
       }
+      // Forget processes that exited (an empty list means the backend skipped it this tick).
+      if (alive.size > 0) for (const pid of h.perProcess.keys()) if (!alive.has(pid)) h.perProcess.delete(pid);
     };
 
     const tick = async () => {
-      const s = await api.snapshot();
-      if (!alive) return;
-      record(s);
-      setSnapshot(s);
+      // Hidden window (closed to the menu bar, popup not shown): don't poll, so the
+      // backend can stop sampling the process list.
+      if (document.hidden) return;
+      try {
+        const s = await api.snapshot();
+        if (!alive) return;
+        record(s);
+        setSnapshot(s);
+      } catch (e) {
+        console.warn("snapshot failed", e);
+      }
     };
 
     // Browser preview: pre-roll a minute of mock data so charts aren't empty.
@@ -69,9 +80,12 @@ export function useVitals(paused: boolean) {
       tick();
     }
     const id = setInterval(tick, 1000);
+    const onVisible = () => !document.hidden && tick();
+    document.addEventListener("visibilitychange", onVisible);
     return () => {
       alive = false;
       clearInterval(id);
+      document.removeEventListener("visibilitychange", onVisible);
     };
   }, [paused]);
 
