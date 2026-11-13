@@ -3,7 +3,7 @@ import type { LucideIcon } from "lucide-react";
 import { useMemo, useState } from "react";
 import { api, isTauri, type CleanupGroup, type TrashReport } from "../api";
 import { ACCENT, IconTile } from "../components/ui";
-import { bytes, bytesParts } from "../format";
+import { fileBytes, fileBytesParts } from "../format";
 
 const GROUP_STYLE: Record<string, { icon: LucideIcon; color: string }> = {
   "xcode-derived": { icon: Hammer, color: ACCENT.cpu },
@@ -45,7 +45,7 @@ export function Cleanup() {
   const all = useMemo(() => groups?.flatMap((g) => g.items) ?? [], [groups]);
   const selectedBytes = all.filter((i) => selected.has(i.path)).reduce((a, i) => a + i.size, 0);
   const totalBytes = all.reduce((a, i) => a + i.size, 0);
-  const [bigValue, bigUnit] = bytesParts(selectedBytes);
+  const [bigValue, bigUnit] = fileBytesParts(selectedBytes);
 
   const toggleGroup = (g: CleanupGroup) => {
     const paths = g.items.map((i) => i.path);
@@ -72,7 +72,7 @@ export function Cleanup() {
           {report ? (
             <>
               <div className="big-label">Đã chuyển vào Thùng rác</div>
-              <div className="big-row"><span className="big-value">{bytesParts(report.bytes)[0]}</span><span className="big-unit">{bytesParts(report.bytes)[1]}</span></div>
+              <div className="big-row"><span className="big-value">{fileBytesParts(report.bytes)[0]}</span><span className="big-unit">{fileBytesParts(report.bytes)[1]}</span></div>
               <div className="hero-sub">
                 {report.trashed} mục · vẫn khôi phục được từ Thùng rác cho tới khi bạn đổ nó
                 {report.failed.length > 0 && ` · ${report.failed.length} mục không dọn được`}
@@ -84,7 +84,7 @@ export function Cleanup() {
               <div className="big-row"><span className="big-value">{!groups ? "—" : bigValue}</span><span className="big-unit">{!groups ? "" : bigUnit}</span></div>
               <div className="hero-sub">
                 {groups
-                  ? `Đã chọn ${bytes(selectedBytes)} trong ${bytes(totalBytes)} tìm thấy · mọi thứ đều vào Thùng rác, không xóa vĩnh viễn`
+                  ? `Đã chọn ${fileBytes(selectedBytes)} trong ${fileBytes(totalBytes)} tìm thấy · mọi thứ đều vào Thùng rác, không xóa vĩnh viễn`
                   : "Bấm Quét để tìm cache, log, build tạm và file lớn · chỉ đọc, chưa xóa gì"}
               </div>
             </>
@@ -94,7 +94,7 @@ export function Cleanup() {
           <button className="btn" onClick={scan} disabled={busy}>{groups ? "Quét lại" : "Quét"}</button>
           {groups && (
             confirming ? (
-              <button className="btn primary" onClick={clean}>Xác nhận dọn {bytes(selectedBytes)}</button>
+              <button className="btn primary" onClick={clean}>Xác nhận dọn {fileBytes(selectedBytes)}</button>
             ) : (
               <button className="btn primary" disabled={!selectedBytes || busy} onClick={() => setConfirming(true)}>Dọn dẹp</button>
             )
@@ -135,7 +135,7 @@ export function Cleanup() {
                   <div className="group-title">{g.title}{!g.safe && <span className="tag">xem trước khi dọn</span>}</div>
                   <div className="group-note">{g.note}</div>
                 </div>
-                <div className="group-size">{bytes(total(g))}</div>
+                <div className="group-size">{fileBytes(total(g))}</div>
                 <button className="icon-btn" onClick={() => setOpen((o) => toggleIn(o, g.id))}>
                   <ChevronRight size={16} style={{ transform: isOpen ? "rotate(90deg)" : undefined, transition: "transform .15s" }} />
                 </button>
@@ -150,7 +150,7 @@ export function Cleanup() {
                       </button>
                       <span className="item-name">{i.name}</span>
                       <span className="item-path">{tilde(i.path)}</span>
-                      <span className="item-size">{bytes(i.size)}</span>
+                      <span className="item-size">{fileBytes(i.size)}</span>
                     </li>
                   ))}
                 </ul>

@@ -2,7 +2,7 @@ import { Cpu, HardDrive, MemoryStick, Wifi, Zap } from "lucide-react";
 import type { Snapshot } from "../api";
 import { DotChart } from "../components/DotChart";
 import { ACCENT, AppIcon, BigNumber, Card, Stats, dimOf } from "../components/ui";
-import { bytes, pct, rate } from "../format";
+import { bytes, fileBytes, pct, rate } from "../format";
 import type { History } from "../useVitals";
 
 export type MetricPage = "cpu" | "memory" | "disk" | "network" | "energy";
@@ -26,8 +26,8 @@ export function Detail({ page, s, h }: { page: MetricPage; s: Snapshot; h: Histo
       top: [...s.processes].sort((a, b) => b.memory - a.memory).map((p) => [p, bytes(p.memory), p.memory] as const),
     },
     disk: {
-      title: "Ổ đĩa", icon: HardDrive, color: ACCENT.disk, big: bytes(s.disk.free).split(" "),
-      stats: [["Đọc", rate(s.disk.readPerSec)], ["Ghi", rate(s.disk.writePerSec)], ["Dung lượng", bytes(s.disk.total)], ["Đã dùng", pct(1 - s.disk.free / s.disk.total)]],
+      title: "Ổ đĩa", icon: HardDrive, color: ACCENT.disk, big: fileBytes(s.disk.free).split(" "),
+      stats: [["Đọc", rate(s.disk.readPerSec)], ["Ghi", rate(s.disk.writePerSec)], ["Dung lượng", fileBytes(s.disk.total)], ["Đã dùng", pct(1 - s.disk.free / s.disk.total)]],
       series: [{ values: h.diskWrite, color: ACCENT.network }, { values: h.diskRead, color: ACCENT.disk }], max: undefined,
       top: [...s.processes].sort((a, b) => b.diskWritten - a.diskWritten).map((p) => [p, bytes(p.diskWritten), p.diskWritten] as const),
     },
@@ -39,7 +39,7 @@ export function Detail({ page, s, h }: { page: MetricPage; s: Snapshot; h: Histo
     },
     energy: {
       title: "Năng lượng", icon: Zap, color: ACCENT.energy, big: [(s.battery?.powerDraw ?? 0).toFixed(1), "W"],
-      stats: [["Pin", s.battery ? pct(s.battery.percent) : "—"], ["Độ chai", s.battery ? pct(s.battery.health) : "—"], ["Chu kỳ", s.battery ? String(s.battery.cycles) : "—"], ["Sạc", s.battery?.onAdapter ? "Đang cắm" : "Không"]],
+      stats: [["Pin", s.battery ? pct(s.battery.percent) : "—"], ["Độ bền", s.battery ? pct(s.battery.health) : "—"], ["Chu kỳ", s.battery ? String(s.battery.cycles) : "—"], ["Sạc", s.battery?.onAdapter ? "Đang cắm" : "Không"]],
       series: [{ values: h.power, color: ACCENT.energy }], max: undefined,
       top: [...s.processes].sort((a, b) => b.cpu - a.cpu).map((p) => [p, `${(p.cpu * 0.08).toFixed(2)} W`, p.cpu] as const),
     },

@@ -2,7 +2,7 @@ import { Pause, Play, Search } from "lucide-react";
 import { useState } from "react";
 import { Sidebar, type PageId } from "./components/Sidebar";
 import { ACCENT } from "./components/ui";
-import { pct, bytes } from "./format";
+import { pct, bytes, fileBytes } from "./format";
 import { Cleanup } from "./pages/Cleanup";
 import { Detail, type MetricPage } from "./pages/Detail";
 import { Overview } from "./pages/Overview";
@@ -10,7 +10,7 @@ import { Processes } from "./pages/Processes";
 import { useVitals } from "./useVitals";
 
 const TITLES: Record<PageId, string> = {
-  overview: "Tổng quan", processes: "Process", cpu: "CPU", memory: "Bộ nhớ", disk: "Ổ đĩa",
+  overview: "Tổng quan", processes: "Tiến trình", cpu: "CPU", memory: "Bộ nhớ", disk: "Ổ đĩa",
   network: "Mạng", energy: "Năng lượng", cleanup: "Dọn dẹp", about: "Về máy này",
 };
 
@@ -44,7 +44,7 @@ export default function App() {
             <>
               <label className="search">
                 <Search size={14} />
-                <input placeholder="Tìm process hoặc PID" value={search} onChange={(e) => setSearch(e.target.value)} />
+                <input placeholder="Tìm tiến trình hoặc PID" value={search} onChange={(e) => setSearch(e.target.value)} />
               </label>
               <div className="segmented">
                 {FILTERS.map(([id, label]) => (
@@ -53,6 +53,7 @@ export default function App() {
               </div>
             </>
           )}
+          {page !== "cleanup" && page !== "about" && <span className={`live-status ${paused ? "paused" : ""}`}><i/>{paused ? "Tạm dừng" : "Trực tiếp"}</span>}
           {page !== "cleanup" && (
             <button className="icon-btn boxed" onClick={() => setPaused((p) => !p)} title={paused ? "Tiếp tục" : "Tạm dừng"}>
               {paused ? <Play size={14} /> : <Pause size={14} />}
@@ -89,7 +90,7 @@ function About({ s }: { s: NonNullable<ReturnType<typeof useVitals>["snapshot"]>
         <dt>Chip</dt><dd>{s.machine.chip}</dd>
         <dt>Core</dt><dd>{s.cpu.pCores} hiệu năng + {s.cpu.perCore.length - s.cpu.pCores} tiết kiệm</dd>
         <dt>Bộ nhớ</dt><dd>{bytes(s.memory.total)}</dd>
-        <dt>Ổ đĩa</dt><dd>{bytes(s.disk.total)}</dd>
+        <dt>Ổ đĩa</dt><dd>{fileBytes(s.disk.total)}</dd>
         <dt>tg-vitals</dt><dd>0.2.0</dd>
       </dl>
     </section>

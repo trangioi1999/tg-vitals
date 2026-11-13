@@ -31,6 +31,16 @@ extern "C" {
         options: u32,
     ) -> kern_return_t;
     fn IORegistryEntryCreateCFProperty(entry: io_object_t, key: CFStringRef, allocator: CFAllocatorRef, options: u32) -> CFTypeRef;
+    fn IOServiceOpen(service: io_object_t, owning_task: mach_port_t, kind: u32, connect: *mut io_object_t) -> kern_return_t;
+    fn IOServiceClose(connect: io_object_t) -> kern_return_t;
+    fn IOConnectCallStructMethod(
+        connect: io_object_t,
+        selector: u32,
+        input: *const c_void,
+        input_size: usize,
+        output: *mut c_void,
+        output_size: *mut usize,
+    ) -> kern_return_t;
 
     // IOHID event system (private but stable since 2020; used by Stats, macmon…).
     fn IOHIDEventSystemClientCreate(allocator: CFAllocatorRef) -> *mut c_void;
@@ -223,9 +233,127 @@ impl HidThermal {
     }
 }
 
+/// The System Management Controller (`AppleSMC`). Intel Macs keep their temperatures here.
+pub struct Smc(io_object_t);
+
+/// `SMCKeyData_t` from Apple's (unpublished) SMC user client; 80 bytes.
+#[repr(C)]
+#[derive(Default, Clone, Copy)]
+struct SmcKeyData {
+    key: u32,
+    vers: [u8; 6],
+    p_limit: SmcPLimit,
+    key_info: SmcKeyInfo,
+    result: u8,
+    status: u8,
+    data8: u8,
+    data32: u32,
+    bytes: [u8; 32],
+}
+
+#[repr(C)]
+#[derive(Default, Clone, Copy)]
+struct SmcPLimit {
+    version: u16,
+    length: u16,
+    cpu: u32,
+    gpu: u32,
+    mem: u32,
+}
+
+#[repr(C)]
+#[derive(Default, Clone, Copy)]
+struct SmcKeyInfo {
+    data_size: u32,
+    data_type: u32,
+    attributes: u8,
+}
+
+const SMC_HANDLE_YPC_EVENT: u32 = 2;
+const SMC_CMD_READ_KEY: u8 = 5;
+const SMC_CMD_KEY_INFO: u8 = 9;
+
+impl Smc {
+    pub fn open() -> Option<Self> {
+        let service = Service::all("AppleSMC").into_iter().next()?;
+        let mut conn: io_object_t = 0;
+        // SAFETY: valid service and out-pointer; we close `conn` on drop.
+        #[allow(deprecated)]
+        let r = unsafe { IOServiceOpen(service.0, libc::mach_task_self(), 0, &mut conn) };
+        (r == 0 && conn != 0).then_some(Self(conn))
+    }
+
+    fn call(&self, input: &SmcKeyData) -> Option<SmcKeyData> {
+        let mut out = SmcKeyData::default();
+        let mut out_size = std::mem::size_of::<SmcKeyData>();
+        // SAFETY: both buffers are SmcKeyData-sized and live for the call.
+        let r = unsafe {
+            IOConnectCallStructMethod(
+                self.0,
+                SMC_HANDLE_YPC_EVENT,
+                (input as *const SmcKeyData).cast(),
+                std::mem::size_of::<SmcKeyData>(),
+                (&mut out as *mut SmcKeyData).cast(),
+                &mut out_size,
+            )
+        };
+        (r == 0 && out.result == 0).then_some(out)
+    }
+
+    /// Raw value of a four-char key: (type, bytes). None when the key does not exist.
+    pub fn read(&self, key: &str) -> Option<([u8; 4], Vec<u8>)> {
+        let key: [u8; 4] = key.as_bytes().try_into().ok()?;
+        let mut input = SmcKeyData { key: u32::from_be_bytes(key), data8: SMC_CMD_KEY_INFO, ..Default::default() };
+        let info = self.call(&input)?.key_info;
+        let size = (info.data_size as usize).min(32);
+        if size == 0 {
+            return None;
+        }
+        input.key_info.data_size = info.data_size;
+        input.data8 = SMC_CMD_READ_KEY;
+        let out = self.call(&input)?;
+        Some((info.data_type.to_be_bytes(), out.bytes[..size].to_vec()))
+    }
+
+    /// (key, °C) for every key in `keys` that exists and decodes.
+    pub fn temperatures(&self, keys: &[&str]) -> Vec<(String, f64)> {
+        keys.iter()
+            .filter_map(|k| {
+                let (kind, bytes) = self.read(k)?;
+                Some((k.to_string(), crate::sensors::smc_decode(&kind, &bytes)?))
+            })
+            .collect()
+    }
+}
+
+impl Drop for Smc {
+    fn drop(&mut self) {
+        // SAFETY: we own the connection.
+        unsafe { IOServiceClose(self.0) };
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn smc_struct_matches_c_layout() {
+        assert_eq!(std::mem::size_of::<SmcKeyData>(), 80);
+    }
+
+    /// Every Mac (Intel and Apple silicon) has an SMC; `#KEY` is the key count.
+    #[test]
+    #[ignore = "needs a real Mac"]
+    fn smc_reads_key_count() {
+        let smc = Smc::open().expect("open AppleSMC");
+        let (kind, bytes) = smc.read("#KEY").expect("#KEY");
+        eprintln!("#KEY {:?} {:?}", std::str::from_utf8(&kind), bytes);
+        assert_eq!(&kind, b"ui32");
+        assert!(smc.read("ZZZZ").is_none());
+        // Apple silicon `flt ` / Intel `sp78` temperature keys, whichever this Mac has.
+        eprintln!("temps {:?}", smc.temperatures(&["Tp01", "Tp05", "Tp09", "TC0P", "TC1C", "TB0T"]));
+    }
 
     /// Regression: a NULL result must never reach CFRelease (crashed the app on launch).
     #[test]

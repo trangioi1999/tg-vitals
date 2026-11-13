@@ -9,7 +9,7 @@
 > - [x] Icon app thật cho từng process (scheme `appicon://`, render bằng NSWorkspace, có cache)
 > - [x] CI build `tg-vitals.app` (ký ad-hoc, không cần Apple Developer) để tải về dùng — artifact mỗi lần chạy, Release khi push tag `v*`
 > - [x] Build **universal** (Apple silicon + Intel) trên CI, kiểm tra phần Intel chạy qua Rosetta
-> - [ ] Nhiệt độ trên Mac Intel (cần đọc SMC, hiện để trống)
+> - [x] Nhiệt độ trên Mac Intel: đọc SMC (`iokit::Smc`, key `TC1C…` / `TCXC` / `TC0D` / `TC0P`) — chưa thử trên máy Intel thật
 > - [ ] Chạy thử trên máy thật: kiểm tra thứ tự core P/E, tên cảm biến nhiệt trên chip của bạn, số công suất (W)
 > - [ ] Xóa bản Swift cũ (`Sources/`, `Tests/`, `Package.swift`) sau khi bản Tauri chạy ổn
 > - [ ] Docker (`docker system df` / `prune`), Xcode simulator (`xcrun simctl delete unavailable`), app đã gỡ
@@ -118,3 +118,7 @@ M0 → M1 → M2 là bản "đủ dùng" (~1 tuần). M3–M5 làm dần khi th�
 | `powermetrics` cần root | Chấp nhận nhập mật khẩu một lần, hoặc LaunchDaemon |
 | App tự tốn CPU vì lấy mẫu nhiều | Lấy mẫu 1s cho số tổng, 2–5s cho danh sách process; dừng khi ẩn cửa sổ |
 | Xóa nhầm dữ liệu | Chỉ `trashItem`, danh sách chặn đường dẫn hệ thống, test bắt buộc |
+
+- [x] Giao diện graphite: Tổng quan CPU/RAM ưu tiên, biểu đồ SVG, dải tài nguyên, bảng tiến trình và lối vào Dọn dẹp; thẻ nổi và điều hướng dùng chung.
+
+- [x] Menu bar: nhãn CPU/RAM/mạng/nhiệt độ có màu native AppKit, số tabular, tooltip chi tiết và giữ thao tác popup.

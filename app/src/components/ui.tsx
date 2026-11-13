@@ -39,7 +39,7 @@ export function Card({
 }) {
   return (
     <section className={`card ${className}`} style={style}>
-      <header className="card-head" onClick={onOpen} role={onOpen ? "button" : undefined}>
+      <header className="card-head" onClick={onOpen} role={onOpen ? "button" : undefined} tabIndex={onOpen ? 0 : undefined} onKeyDown={onOpen ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpen(); } } : undefined}>
         <IconTile icon={icon} color={color} />
         <h3 style={{ color }}>{title}</h3>
         <span className="card-right">{right}</span>

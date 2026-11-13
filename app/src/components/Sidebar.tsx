@@ -1,5 +1,5 @@
 import {
-  Battery, Cpu, HardDrive, Info, LayoutGrid, List, MemoryStick, Settings, Sparkles, Wifi,
+  ChartNoAxesColumnIncreasing, Battery, Cpu, HardDrive, Info, LayoutGrid, List, MemoryStick, Settings, Sparkles, Wifi,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { isTauri, type Snapshot } from "../api";
@@ -20,7 +20,7 @@ const SECTIONS: { title?: string; items: Item[] }[] = [
   {
     items: [
       { id: "overview", label: "Tổng quan", icon: LayoutGrid, color: ACCENT.gray },
-      { id: "processes", label: "Process", icon: List, color: ACCENT.gray, value: (s) => String(s.processes.length) },
+      { id: "processes", label: "Tiến trình", icon: List, color: ACCENT.gray, value: (s) => String(s.processes.length) },
     ],
   },
   {
@@ -49,6 +49,7 @@ export function Sidebar({ page, onSelect, snapshot }: { page: PageId; onSelect: 
       <div className={`traffic ${isTauri ? "native" : ""}`} data-tauri-drag-region>
         <span /><span /><span />
       </div>
+      <div className="brand" data-tauri-drag-region><ChartNoAxesColumnIncreasing size={27}/>tg-vitals</div>
       <nav>
         {SECTIONS.map((section, i) => (
           <div key={i} className="nav-section">
@@ -57,6 +58,7 @@ export function Sidebar({ page, onSelect, snapshot }: { page: PageId; onSelect: 
               <button
                 key={item.id}
                 className={`nav-item ${page === item.id ? "active" : ""}`}
+                aria-current={page === item.id ? "page" : undefined}
                 onClick={() => onSelect(item.id)}
               >
                 <IconTile icon={item.icon} color={page === item.id ? "#ffffff" : item.color} size={20} />
