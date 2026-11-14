@@ -118,6 +118,12 @@ tự hỏi mật khẩu khi cần, không chạy shell và không phải tự es
   `osascript "do shell script … with administrator privileges"` chuyển vào `~/.Trash` (đã dùng thành công
   khi dọn GlobalProtect), đường dẫn truyền qua tham số đã escape, vẫn đặt trong `care::trasher`.
 
+**Kết quả spike (2026-11-14):** `NSWorkspace.recycleURLs` **không** hỏi mật khẩu — trả lỗi 513
+"You do not have permission". `tell application "Finder" to delete POSIX file …` **có** hỏi mật khẩu và
+đưa vào Thùng rác đúng nghĩa (giữ "Put Back"). → Dùng Finder qua `/usr/bin/osascript`, đường dẫn truyền
+bằng `argv` (`on run argv`), không ghép chuỗi → không có lỗi chèn lệnh. Cần `NSAppleEventsUsageDescription`
+trong Info.plist; lần đầu macOS hỏi quyền "tg-vitals muốn điều khiển Finder".
+
 ## Để lại cho người làm
 
 - Ngưỡng hiển thị (ẩn leftovers < 1 KB?), cách sắp xếp phụ, chữ trên UI.
