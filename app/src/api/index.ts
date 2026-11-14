@@ -1,6 +1,6 @@
 // Single entry point for data. Inside Tauri it calls Rust commands; in a browser it uses mocks.
-import type { CleanupGroup, Snapshot, TrashReport } from "./types";
-import { mockCleanup, mockSnapshot } from "./mock";
+import type { CleanupGroup, ScanEvent, Snapshot, TrashReport } from "./types";
+import { mockScan, mockSnapshot } from "./mock";
 
 export const isTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 
@@ -12,8 +12,14 @@ async function call<T>(cmd: string, args?: Record<string, unknown>): Promise<T> 
 export const api = {
   snapshot: (): Promise<Snapshot> => (isTauri ? call("snapshot") : Promise.resolve(mockSnapshot())),
 
-  scanCleanup: (): Promise<CleanupGroup[]> =>
-    isTauri ? call("scan_cleanup") : new Promise((r) => setTimeout(() => r(mockCleanup()), 600)),
+  /** Read-only scan; `onEvent` receives progress (steps, folders) while it runs. */
+  scanCleanup: async (onEvent: (e: ScanEvent) => void): Promise<CleanupGroup[]> => {
+    if (!isTauri) return mockScan(onEvent);
+    const { Channel } = await import("@tauri-apps/api/core");
+    const channel = new Channel<ScanEvent>();
+    channel.onmessage = onEvent;
+    return call("scan_cleanup", { onEvent: channel });
+  },
 
   trash: (paths: string[]): Promise<TrashReport> =>
     isTauri ? call("trash_paths", { paths }) : Promise.resolve({ trashed: paths.length, bytes: 0, failed: [] }),

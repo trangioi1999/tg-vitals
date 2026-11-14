@@ -61,12 +61,16 @@ Mục tiêu: dọn được vài chục GB rác dev mà không bao giờ mất d
 - [x] `Trasher`: chỉ chuyển vào Thùng rác qua `FileManager.trashItem`
 - [x] `PathGuard`: chặn mọi đường dẫn ngoài home và thư mục nhạy cảm (có test)
 - [x] Màn hình Care: nút **Quét** → danh sách nhóm theo loại, dung lượng, tick chọn → **Dọn**
-- [x] `node_modules` finder (Rust `Scanner::stale_node_modules`, gốc: `~/WebstormProjects`, `~/Projects`, `~/code`…): quét các thư mục gốc cấu hình được (`~/Projects`, `~/code`…), chỉ gợi ý project không sửa > 30 ngày
+- [x] File build trong project (`care::projects`, học từ Mole): `target`, `node_modules`, `.next`, `.venv`, `Pods`… chỉ khi cạnh file project đúng loại, bỏ qua file Git đang theo dõi và repo lồng; gốc quét gồm `~/Documents`, `~/Projects`, `~/code`…; không tick sẵn, hiện "sửa lần cuối X ngày trước"
+- [x] Không bao giờ gợi ý xóa runtime / model nằm trong cache (`care::protected_cache`: ms-playwright, Cypress, puppeteer, huggingface, ollama…)
+- [x] Quét có tiến trình: terminal chạy log (`ScanEvent` qua Tauri `Channel`), xong thì gập thành 1 dòng
 - [~] Xcode: DerivedData, Archives, iOS DeviceSupport (xong) · simulator không dùng (chưa) (`xcrun simctl delete unavailable`)
 - [x] Cache tool dev: Homebrew, npm, pnpm, yarn, pip, Gradle, CocoaPods (quét thư mục cache)
 - [ ] Docker: hiện kết quả `docker system df`, dọn bằng `docker system prune` (hỏi xác nhận riêng)
 - [x] File lớn: liệt kê file > 500MB trong `~/Downloads`, `~/Desktop`, `~/Movies`
-- [ ] App đã gỡ: so `~/Library/Application Support` + `Preferences` với app đang cài
+- [ ] App đã gỡ: so `~/Library/Application Support` + `Preferences` với app đang cài (Mole: không cài, không chạy, không LaunchAgent, đủ cũ)
+- [ ] Thêm cache dev mà máy thật sự có: bun, Go, cargo registry, rustup downloads, Docker buildx, simulator đã tắt (học từ Mole)
+- [ ] Danh sách thư mục người dùng muốn bảo vệ (whitelist)
 - [ ] Hướng dẫn cấp Full Disk Access khi bị từ chối quyền
 - [ ] Lưu lịch sử dọn (ngày, dung lượng giải phóng) ra file JSON
 

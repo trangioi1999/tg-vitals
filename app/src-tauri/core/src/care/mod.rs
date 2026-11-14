@@ -1,5 +1,7 @@
 //! Care: find junk (read-only) and move it to the Trash (only via [`trasher`]).
 pub mod path_guard;
+pub mod projects;
+pub mod protected_cache;
 pub mod scanner;
 pub mod targets;
 pub mod trasher;
@@ -44,6 +46,20 @@ impl CleanupGroup {
     pub fn total(&self) -> u64 {
         self.items.iter().map(|i| i.size).sum()
     }
+}
+
+/// Progress of a cleanup scan, streamed to the UI while `Scanner::scan_all_with` runs.
+#[derive(Serialize, Clone, Debug, PartialEq)]
+#[serde(tag = "kind", rename_all = "camelCase", rename_all_fields = "camelCase")]
+pub enum ScanEvent {
+    /// Step `index` (0-based) of `total` started.
+    Step { index: usize, total: usize, title: String },
+    /// A folder inside the current step is being read.
+    Path { path: String },
+    /// Something worth cleaning was found inside the current step (shown as it is found).
+    Found { path: String, bytes: u64 },
+    /// The current step finished; `bytes` / `items` found (0 when nothing).
+    StepDone { title: String, bytes: u64, items: usize },
 }
 
 #[derive(Serialize, Clone, Debug, PartialEq)]

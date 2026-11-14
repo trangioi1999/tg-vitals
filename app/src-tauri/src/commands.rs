@@ -2,7 +2,8 @@
 use crate::state::{home, AppState};
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Manager, State};
-use vitals_core::care::{scanner::Scanner, trasher, CleanupGroup, TrashReport};
+use tauri::ipc::Channel;
+use vitals_core::care::{scanner::Scanner, trasher, CleanupGroup, ScanEvent, TrashReport};
 use vitals_core::Snapshot;
 
 /// Latest snapshot. Waits briefly at startup, or when the process list was paused
@@ -52,8 +53,9 @@ pub fn reveal_path(path: String) -> Result<(), String> {
 
 /// Read-only scan. Remembers the result: only these paths may be trashed afterwards.
 #[tauri::command]
-pub async fn scan_cleanup(state: State<'_, AppState>) -> Result<Vec<CleanupGroup>, String> {
-    let groups = tauri::async_runtime::spawn_blocking(|| Scanner::new(home()).scan_all())
+pub async fn scan_cleanup(on_event: Channel<ScanEvent>, state: State<'_, AppState>) -> Result<Vec<CleanupGroup>, String> {
+    // Progress is best effort: a closed window must not abort the scan.
+    let groups = tauri::async_runtime::spawn_blocking(move || Scanner::new(home()).scan_all_with(&mut |e| { let _ = on_event.send(e); }))
         .await
         .map_err(|e| e.to_string())?;
     *state.scanned.lock().unwrap() =
