@@ -126,6 +126,28 @@ fn large_files(roots: &[PathBuf], min_bytes: u64, max_depth: usize) -> Vec<Clean
     out
 }
 
+/// Only items the user owns can be moved to the Trash: a folder created by a root daemon
+/// (e.g. GlobalProtect's `~/Library/Caches/PanGPS`) fails with "no permission".
+pub(crate) fn owned_by_user(path: &Path) -> bool {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        // SAFETY: getuid has no preconditions and cannot fail.
+        let uid = unsafe { libc::getuid() };
+        fs::symlink_metadata(path).is_ok_and(|m| owned_by(m.uid(), uid))
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = path;
+        true
+    }
+}
+
+/// Pure part of `owned_by_user`, testable without root-owned files.
+pub(crate) fn owned_by(file_uid: u32, user_uid: u32) -> bool {
+    file_uid == user_uid
+}
+
 fn children(folder: &Path, excluded: &[&str]) -> Vec<CleanupItem> {
     let Ok(entries) = fs::read_dir(folder) else { return Vec::new() };
     entries
@@ -137,6 +159,7 @@ fn children(folder: &Path, excluded: &[&str]) -> Vec<CleanupItem> {
                 && !excluded.contains(&name.as_ref())
                 && !is_protected_cache_child(&name)
         })
+        .filter(|e| owned_by_user(&e.path()))
         .map(|e| {
             let path = e.path();
             let modified = fs::symlink_metadata(&path).and_then(|m| m.modified()).ok();
@@ -247,6 +270,16 @@ mod tests {
         assert_eq!(names, ["com.app"]);
         assert!(group.items[0].size >= 10_000);
         assert!(group.items[0].path.ends_with("Library/Caches/com.app"));
+    }
+
+    #[test]
+    fn only_items_the_user_owns() {
+        assert!(owned_by(501, 501));
+        assert!(!owned_by(0, 501), "root-owned, e.g. ~/Library/Caches/PanGPS");
+        let home = home();
+        write(&home.join("mine/a.bin"), 10);
+        assert!(owned_by_user(&home.join("mine")));
+        assert!(!owned_by_user(&home.join("missing")));
     }
 
     #[test]

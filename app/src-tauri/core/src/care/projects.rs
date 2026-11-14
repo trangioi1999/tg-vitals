@@ -1,7 +1,7 @@
 //! Rebuildable build artifacts inside projects (`target`, `node_modules`, `.next`, `.venv`, …).
 //! Read-only. A folder only counts when its parent is a real project of the matching kind
 //! (e.g. `target` next to `Cargo.toml`), it holds no Git-tracked file and no nested repository.
-use super::scanner::dir_size;
+use super::scanner::{dir_size, owned_by_user};
 use super::CleanupItem;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -77,7 +77,7 @@ fn walk(root: &Path, dir: &Path, depth: usize, max_depth: usize, found: &mut Vec
         let name = entry.file_name().to_string_lossy().into_owned();
         let path = entry.path();
         if let Some(markers) = artifact_markers(&name) {
-            if markers.iter().any(|m| dir.join(m).is_file()) && is_disposable(&path) {
+            if markers.iter().any(|m| dir.join(m).is_file()) && owned_by_user(&path) && is_disposable(&path) {
                 let size = dir_size(&path);
                 if size > 0 {
                     let item = artifact_item(root, dir, &path, size);
