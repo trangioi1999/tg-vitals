@@ -34,3 +34,12 @@ export function uptime(seconds: number): string {
   const h = Math.floor((seconds % 86400) / 3600);
   return d > 0 ? `${d} ngày ${h} giờ` : `${h} giờ`;
 }
+
+/** Unix seconds → "hôm nay" / "3 ngày trước" / "2 tháng trước". */
+export function ago(seconds: number): string {
+  const days = Math.floor((Date.now() / 1000 - seconds) / 86400);
+  if (days < 1) return "hôm nay";
+  if (days < 60) return `${days} ngày trước`;
+  if (days < 730) return `${Math.floor(days / 30)} tháng trước`;
+  return `${Math.floor(days / 365)} năm trước`;
+}

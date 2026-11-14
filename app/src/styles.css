@@ -47,6 +47,7 @@ nav { flex: 1; overflow-y: auto; }
 .sidebar-foot { display: flex; align-items: center; justify-content: space-between; padding: 10px 8px 0; }
 .machine { font-weight: 600; }
 .machine-sub { font-size: 11px; color: var(--muted); margin-top: 2px; }
+.app-version { font-size: 10.5px; color: var(--faint); margin-top: 3px; font-variant-numeric: tabular-nums; }
 .muted { color: var(--muted); }
 
 .icon-tile { display: inline-grid; place-items: center; border-radius: 6px; flex-shrink: 0; }
@@ -402,7 +403,57 @@ button:not(:disabled) { cursor:pointer; }
   background:linear-gradient(155deg,#34373f 0%,#26292f 24%,#1d2026 100%); border:1px solid #ffffff1c; box-shadow:inset 0 1px 0 #ffffff24,0 3px 8px #00000030; }
 .scan-summary:hover { color:var(--text); }
 .scan-summary-toggle { margin-left:auto; display:flex; align-items:center; gap:5px; font-family:-apple-system,system-ui,sans-serif; }
-@media (prefers-reduced-motion:reduce) { .scan-track > div, .hero-icon.scanning svg, .term-body .ln, .term-body .cursor, .scan-live i { animation:none!important; } }
+@media (prefers-reduced-motion:reduce) { .spin, .scan-track > div, .hero-icon.scanning svg, .term-body .ln, .term-body .cursor, .scan-live i { animation:none!important; } }
+/* ---------- Gỡ app ---------- */
+.uninstall-loading { max-width:900px; margin:18px auto; padding:0 18px; width:100%; }
+.hero-sub.mono { font-family:"SF Mono",ui-monospace,Menlo,monospace; font-size:11.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.uninstall-main { flex:1; min-width:0; display:flex; flex-direction:column; }
+.uninstall-bar { flex-shrink:0; display:flex; align-items:center; gap:10px; padding:10px 14px; background:linear-gradient(#24262b,#1f2126); border-bottom:1px solid #08090b; }
+.uninstall-bar .search { width:220px; }
+.uninstall-count { margin-left:auto; display:flex; align-items:center; gap:6px; color:var(--muted); font-size:12px; font-variant-numeric:tabular-nums; }
+.spin { animation:spin 1s linear infinite; }
+@keyframes spin { to { transform:rotate(360deg) } }
+.uninstall-panel { position:relative; }
+.uninstall-panel.is-busy > :not(.panel-busy) { filter:blur(1.5px); opacity:.35; pointer-events:none; transition:opacity .2s; }
+.panel-busy { position:absolute; inset:0; z-index:2; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px; padding:24px; text-align:center; background:#14161a8c; }
+.panel-busy .spin { color:#5ac8fa; }
+.busy-title { font-size:15px; font-weight:700; }
+.busy-sub { color:var(--muted); font-size:12px; line-height:1.5; }
+.panel-busy .scan-track { width:80%; }
+.groups { position:relative; }
+.groups.is-busy > :not(.groups-busy) { filter:blur(1.5px); opacity:.35; pointer-events:none; transition:opacity .2s; }
+.groups-busy { position:absolute; inset:0; z-index:2; }
+.busy-card { position:sticky; top:140px; margin:40px auto 0; width:min(360px,90%); display:flex; flex-direction:column; align-items:center; gap:8px; padding:20px; text-align:center; border-radius:14px; background:linear-gradient(155deg,#34373f,#1d2026); border:1px solid #ffffff1c; box-shadow:0 10px 30px #0008; }
+.busy-card .spin { color:#5ac8fa; }
+.result-panel { align-items:center; text-align:center; justify-content:center; }
+.result-icon.ok { color:#32d74b; } .result-icon.bad { color:#ff9f0a; }
+.result-panel .uninstall-result { align-self:stretch; text-align:left; }
+.app-name { display:flex; flex-direction:column; line-height:1.2; }
+.app-name small { color:var(--faint); font-size:10.5px; }
+.pill-running { font-size:10px; padding:2px 6px; border-radius:5px; color:#59dd77; background:#32d74b1a; }
+.name-cell .lock, .lo-name .lock { color:#ff9f0a; flex-shrink:0; }
+.uninstall-panel { width:360px; display:flex; flex-direction:column; gap:12px; overflow-x:hidden; }
+.uninstall-panel header { margin-bottom:0; }
+.empty-panel { color:var(--muted); font-size:12.5px; line-height:1.6; justify-content:center; text-align:center; }
+.freed .big-value { font-size:30px; }
+.note { font-size:11.5px; color:var(--muted); line-height:1.5; padding:8px 10px; border-radius:8px; background:#ffffff08; border:1px solid #ffffff0d; }
+.note code { font-family:"SF Mono",ui-monospace,Menlo,monospace; color:var(--text); font-size:11px; }
+.leftovers { list-style:none; margin:0; padding:0; display:grid; grid-template-columns:minmax(0,1fr); gap:2px; }
+.leftovers li { display:flex; align-items:center; gap:10px; padding:6px 4px; border-radius:6px; min-width:0; }
+.leftovers li:hover { background:#ffffff08; }
+.leftovers li.muted { color:var(--muted); font-size:12px; }
+.lo-text { flex:1; min-width:0; display:flex; flex-direction:column; }
+.lo-name { display:flex; align-items:center; gap:5px; font-weight:600; font-size:12.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.lo-path { color:var(--faint); font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.lo-size { color:var(--muted); font-size:12px; font-variant-numeric:tabular-nums; white-space:nowrap; }
+.btn.wide { width:100%; height:34px; display:flex; align-items:center; justify-content:center; gap:7px; }
+.confirm-row { display:grid; grid-template-columns:auto 1fr; gap:8px; }
+.btn.danger-fill, .btn.danger-fill:hover:not(:disabled) { background:linear-gradient(#ff5b52,#e0302a); }
+.btn.danger-fill:hover:not(:disabled) { filter:brightness(1.08); }
+.uninstall-result { font-size:12.5px; padding:10px 12px; border-radius:10px; background:#32d74b14; color:#59dd77; }
+.uninstall-result.bad { background:#ff453a14; color:#ff6961; }
+.uninstall-result .fail { display:flex; flex-direction:column; margin-top:6px; color:var(--muted); font-size:11.5px; }
+.uninstall-result .fail span { color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 @media (max-width:1150px) {
  .sidebar { width:190px; }
  .content { padding:14px; }

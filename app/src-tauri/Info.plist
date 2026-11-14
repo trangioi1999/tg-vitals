@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Merged into the bundle's Info.plist by the Tauri bundler. -->
+<plist version="1.0">
+<dict>
+  <key>NSAppleEventsUsageDescription</key>
+  <string>tg-vitals nhờ Finder chuyển app bạn chọn gỡ vào Thùng rác (Finder sẽ hỏi mật khẩu với app cài cho mọi người dùng).</string>
+</dict>
+</plist>

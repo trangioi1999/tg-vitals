@@ -91,3 +91,12 @@ export function useVitals(paused: boolean) {
 
   return { snapshot, history: history.current };
 }
+
+/** The app version, loaded once. */
+export function useAppVersion(): string | null {
+  const [version, setVersion] = useState<string | null>(null);
+  useEffect(() => {
+    api.appVersion().then(setVersion, () => setVersion(null));
+  }, []);
+  return version;
+}

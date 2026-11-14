@@ -1,9 +1,9 @@
-import { Archive, Box, Check, ChevronRight, Code2, FileText, Film, Hammer, Package, Smartphone, Sparkles, Terminal, Trash2 } from "lucide-react";
+import { Archive, Box, Check, ChevronRight, Code2, FileText, Film, Hammer, Package, RefreshCw, Smartphone, Sparkles, Terminal, Trash2 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api, isTauri, type CleanupGroup, type ScanEvent, type TrashReport } from "../api";
 import { ACCENT, IconTile } from "../components/ui";
-import { fileBytes, fileBytesParts } from "../format";
+import { ago, fileBytes, fileBytesParts } from "../format";
 
 const GROUP_STYLE: Record<string, { icon: LucideIcon; color: string }> = {
   "xcode-derived": { icon: Hammer, color: ACCENT.cpu },
@@ -42,6 +42,8 @@ export function Cleanup() {
   const [found, setFound] = useState(0);
   const [elapsed, setElapsed] = useState(0);
   const [logOpen, setLogOpen] = useState(false);
+  // What is being moved to the Trash right now (shown over the dimmed list).
+  const [cleaning, setCleaning] = useState<{ count: number; bytes: number } | null>(null);
 
   const onScanEvent = (e: ScanEvent) => {
     if (e.kind === "step") {
@@ -93,15 +95,27 @@ export function Cleanup() {
     const next = new Set(selected);
     paths.forEach((p) => (allOn ? next.delete(p) : next.add(p)));
     setSelected(next);
+    setReport(null);
   };
 
   const clean = async () => {
+    const paths = [...selected];
     setConfirming(false);
     setBusy(true);
-    const r = await api.trash([...selected]);
-    setReport({ ...r, bytes: isTauri ? r.bytes : selectedBytes });
-    setGroups(null);
-    setBusy(false);
+    setCleaning({ count: paths.length, bytes: selectedBytes });
+    try {
+      const r = await api.trash(paths);
+      setReport({ ...r, bytes: isTauri ? r.bytes : selectedBytes });
+      // Only what went to the Trash leaves the list; the rest stays cleanable without a new scan.
+      const failed = new Set(r.failed.map((f) => f.path));
+      const gone = new Set(paths.filter((p) => !failed.has(p)));
+      setGroups((list) => list?.map((g) => ({ ...g, items: g.items.filter((i) => !gone.has(i.path)) }))
+        .filter((g) => g.items.length > 0) ?? null);
+      setSelected((s) => new Set([...s].filter((p) => !gone.has(p))));
+    } finally {
+      setCleaning(null);
+      setBusy(false);
+    }
   };
 
   return (
@@ -109,7 +123,13 @@ export function Cleanup() {
       <section className="hero">
         <div className={`hero-icon ${scanning ? "scanning" : ""}`}><Trash2 size={30} /></div>
         <div className="hero-text">
-          {report ? (
+          {cleaning ? (
+            <>
+              <div className="big-label">Đang dọn…</div>
+              <div className="big-row"><span className="big-value">{fileBytesParts(cleaning.bytes)[0]}</span><span className="big-unit">{fileBytesParts(cleaning.bytes)[1]}</span></div>
+              <div className="scan-track"><div style={{ width: "100%" }} /></div>
+            </>
+          ) : report ? (
             <>
               <div className="big-label">Đã chuyển vào Thùng rác</div>
               <div className="big-row"><span className="big-value">{fileBytesParts(report.bytes)[0]}</span><span className="big-unit">{fileBytesParts(report.bytes)[1]}</span></div>
@@ -127,7 +147,7 @@ export function Cleanup() {
             </>
             ) : (
             <>
-              <div className="big-label">{busy ? "Đang dọn…" : groups ? "Có thể dọn" : "Chưa quét"}</div>
+              <div className="big-label">{groups ? "Có thể dọn" : "Chưa quét"}</div>
               <div className="big-row"><span className="big-value">{!groups ? "—" : bigValue}</span><span className="big-unit">{!groups ? "" : bigUnit}</span></div>
               <div className="hero-sub">
                 {groups
@@ -175,7 +195,16 @@ export function Cleanup() {
 
       {groups && groups.length === 0 && <div className="empty">Không tìm thấy gì để dọn 🎉</div>}
 
-      <div className="groups">
+      <div className={`groups ${cleaning ? "is-busy" : ""}`}>
+        {cleaning && (
+          <div className="groups-busy" role="status">
+            <div className="busy-card">
+              <RefreshCw size={22} className="spin" />
+              <div className="busy-title">Đang chuyển {cleaning.count} mục vào Thùng rác</div>
+              <div className="busy-sub">{fileBytes(cleaning.bytes)} · khôi phục được từ Thùng rác</div>
+            </div>
+          </div>
+        )}
         {groups?.map((g) => {
           const style = GROUP_STYLE[g.id] ?? { icon: Sparkles, color: ACCENT.gray };
           const paths = g.items.map((i) => i.path);
@@ -202,7 +231,7 @@ export function Cleanup() {
                   {g.items.map((i) => (
                     <li key={i.path}>
                       <button className={`check small ${selected.has(i.path) ? "on" : ""}`}
-                        onClick={() => setSelected((s) => toggleIn(s, i.path))}>
+                        onClick={() => { setSelected((s) => toggleIn(s, i.path)); setReport(null); }}>
                         {selected.has(i.path) && <Check size={10} strokeWidth={3} />}
                       </button>
                       <span className="item-name">{i.name}</span>
@@ -243,15 +272,6 @@ function ScanTerminal({ log, live }: { log: LogLine[]; live: boolean }) {
       </div>
     </div>
   );
-}
-
-/** Unix seconds → "hôm nay" / "3 ngày trước" / "2 tháng trước". */
-function ago(seconds: number): string {
-  const days = Math.floor((Date.now() / 1000 - seconds) / 86400);
-  if (days < 1) return "hôm nay";
-  if (days < 60) return `${days} ngày trước`;
-  if (days < 730) return `${Math.floor(days / 30)} tháng trước`;
-  return `${Math.floor(days / 365)} năm trước`;
 }
 
 const total = (g: CleanupGroup) => g.items.reduce((a, i) => a + i.size, 0);

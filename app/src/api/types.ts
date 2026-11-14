@@ -88,6 +88,28 @@ export interface CleanupGroup {
   items: CleanupItem[];
 }
 
+/** An installed app on the "Gỡ app" page (mirrors `care::app_inventory::AppInfo`). */
+export interface AppInfo {
+  path: string;
+  name: string;
+  bundleId: string;
+  version: string;
+  size: number;
+  ownedByUser: boolean;      // false → Finder asks for the admin password
+  lastUsed: number | null;   // unix seconds
+  running: boolean;
+  brewCask: string | null;
+  teamId: string | null;
+}
+
+/** Data an app left behind (mirrors `care::apps::AppLeftover`). */
+export interface AppLeftover {
+  path: string;
+  name: string;
+  size: number | null;       // null → could not be read (e.g. no Full Disk Access)
+  needsAdmin: boolean;
+}
+
 /** Scan progress, streamed while `scanCleanup` runs (mirrors `care::ScanEvent`). */
 export type ScanEvent =
   | { kind: "step"; index: number; total: number; title: string }

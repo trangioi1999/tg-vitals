@@ -22,7 +22,11 @@ pub fn run() {
             commands::scan_cleanup,
             commands::trash_paths,
             commands::show_main,
+            commands::quit_self,
+            commands::list_apps,
+            commands::app_leftovers,
             commands::quit_app,
+            commands::uninstall_app,
         ])
         .menu(app_menu)
         .on_menu_event(|app, event| match event.id.as_ref() {

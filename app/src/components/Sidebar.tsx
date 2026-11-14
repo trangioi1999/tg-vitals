@@ -1,12 +1,14 @@
 import {
+  PackageX,
   ChartNoAxesColumnIncreasing, Battery, Cpu, HardDrive, Info, LayoutGrid, List, MemoryStick, Settings, Sparkles, Wifi,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { isTauri, type Snapshot } from "../api";
 import { pct, rate, uptime } from "../format";
 import { ACCENT, IconTile } from "./ui";
+import { useAppVersion } from "../useVitals";
 
-export type PageId = "overview" | "processes" | "cpu" | "memory" | "disk" | "network" | "energy" | "cleanup" | "about";
+export type PageId = "overview" | "processes" | "cpu" | "memory" | "disk" | "network" | "energy" | "cleanup" | "uninstall" | "about";
 
 interface Item {
   id: PageId;
@@ -38,12 +40,14 @@ const SECTIONS: { title?: string; items: Item[] }[] = [
     title: "Hệ thống",
     items: [
       { id: "cleanup", label: "Dọn dẹp", icon: Sparkles, color: ACCENT.disk },
+      { id: "uninstall", label: "Gỡ app", icon: PackageX, color: ACCENT.gpu },
       { id: "about", label: "Về máy này", icon: Info, color: ACCENT.gray },
     ],
   },
 ];
 
 export function Sidebar({ page, onSelect, snapshot }: { page: PageId; onSelect: (p: PageId) => void; snapshot: Snapshot | null }) {
+  const version = useAppVersion();
   return (
     <aside className="sidebar">
       <div className={`traffic ${isTauri ? "native" : ""}`} data-tauri-drag-region>
@@ -75,6 +79,7 @@ export function Sidebar({ page, onSelect, snapshot }: { page: PageId; onSelect: 
           <div className="machine-sub">
             {snapshot ? `${snapshot.machine.chip} · Bật ${uptime(snapshot.machine.uptime)}` : ""}
           </div>
+          {version && <div className="app-version">tg-vitals {version}</div>}
         </div>
         <Settings size={16} className="muted" />
       </footer>

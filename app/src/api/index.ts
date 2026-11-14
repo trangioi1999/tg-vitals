@@ -1,6 +1,6 @@
 // Single entry point for data. Inside Tauri it calls Rust commands; in a browser it uses mocks.
-import type { CleanupGroup, ScanEvent, Snapshot, TrashReport } from "./types";
-import { mockScan, mockSnapshot } from "./mock";
+import type { AppInfo, AppLeftover, CleanupGroup, ScanEvent, Snapshot, TrashReport } from "./types";
+import { mockApps, mockLeftovers, mockScan, mockSnapshot } from "./mock";
 
 export const isTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 
@@ -22,17 +22,44 @@ export const api = {
   },
 
   trash: (paths: string[]): Promise<TrashReport> =>
-    isTauri ? call("trash_paths", { paths }) : Promise.resolve({ trashed: paths.length, bytes: 0, failed: [] }),
+    isTauri ? call("trash_paths", { paths })
+      : new Promise((r) => setTimeout(() => r({ trashed: paths.length, bytes: 0, failed: [] }), 900)),
+
+  /** Installed apps, biggest first; `onEvent` gets each app path as it is read. */
+  listApps: async (onEvent: (e: ScanEvent) => void): Promise<AppInfo[]> => {
+    if (!isTauri) return mockApps(onEvent);
+    const { Channel } = await import("@tauri-apps/api/core");
+    const channel = new Channel<ScanEvent>();
+    channel.onmessage = onEvent;
+    return call("list_apps", { onEvent: channel });
+  },
+
+  appLeftovers: (bundlePath: string): Promise<AppLeftover[]> =>
+    isTauri ? call("app_leftovers", { bundlePath }) : Promise.resolve(mockLeftovers(bundlePath)),
+
+  quitApp: (bundleId: string): Promise<void> => (isTauri ? call("quit_app", { bundleId }) : Promise.resolve()),
+
+  /** Moves the chosen paths to the Trash (Finder asks for the admin password when needed). */
+  uninstallApp: (bundlePath: string, paths: string[]): Promise<TrashReport> =>
+    isTauri ? call("uninstall_app", { bundlePath, paths })
+      : new Promise((r) => setTimeout(() => r({ trashed: paths.length, bytes: 0, failed: [] }), 700)),
 
   killProcess: (pid: number, force: boolean): Promise<void> =>
     isTauri ? call("kill_process", { pid, force }) : Promise.resolve(),
 
   revealPath: (path: string): Promise<void> => (isTauri ? call("reveal_path", { path }) : Promise.resolve()),
 
+  /** Version of the running app (tauri.conf.json), or package.json in the browser preview. */
+  appVersion: async (): Promise<string> => {
+    if (!isTauri) return __APP_VERSION__;
+    const { getVersion } = await import("@tauri-apps/api/app");
+    return getVersion();
+  },
+
   /** Menu bar popup → open the main window. */
   showMain: (): Promise<void> => (isTauri ? call("show_main") : Promise.resolve()),
 
-  quit: (): Promise<void> => (isTauri ? call("quit_app") : Promise.resolve()),
+  quit: (): Promise<void> => (isTauri ? call("quit_self") : Promise.resolve()),
 };
 
 export type * from "./types";

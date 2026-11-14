@@ -71,6 +71,7 @@ Mục tiêu: dọn được vài chục GB rác dev mà không bao giờ mất d
 - [ ] App đã gỡ: so `~/Library/Application Support` + `Preferences` với app đang cài (Mole: không cài, không chạy, không LaunchAgent, đủ cũ)
 - [ ] Thêm cache dev mà máy thật sự có: bun, Go, cargo registry, rustup downloads, Docker buildx, simulator đã tắt (học từ Mole)
 - [ ] Danh sách thư mục người dùng muốn bảo vệ (whitelist)
+- [x] Gỡ app (học từ Mole `mo uninstall`): liệt kê app theo dung lượng, gỡ app + dữ liệu sót lại khớp bundle id/team id, app thuộc root qua Finder (hỏi mật khẩu), quên receipt `pkgutil` (spec `docs/superpowers/specs/2026-11-14-app-uninstaller-design.md`)
 - [ ] Hướng dẫn cấp Full Disk Access khi bị từ chối quyền
 - [ ] Lưu lịch sử dọn (ngày, dung lượng giải phóng) ra file JSON
 

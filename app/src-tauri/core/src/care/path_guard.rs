@@ -54,6 +54,63 @@ pub fn is_allowed(path: &Path, home: &Path) -> bool {
         .any(|sub| relative == *sub || relative.starts_with(&format!("{sub}/")))
 }
 
+/// Folders whose direct children the app uninstaller may move to the Trash
+/// (system-level leftovers matched by bundle id; Finder asks for the admin password).
+pub const SYSTEM_LEFTOVER_ROOTS: &[&str] = &[
+    "/Library/LaunchAgents", "/Library/LaunchDaemons", "/Library/PrivilegedHelperTools",
+    "/Library/Application Support", "/Library/Caches", "/Library/Logs", "/Library/Preferences",
+];
+
+/// Folders under `~/Library` whose direct children the app uninstaller may move to the Trash
+/// (leftovers matched by bundle id). Some are forbidden to the generic cleanup on purpose.
+pub const USER_LEFTOVER_ROOTS: &[&str] = &[
+    "Library/Application Support", "Library/Application Scripts", "Library/Caches", "Library/Containers",
+    "Library/Group Containers", "Library/HTTPStorages", "Library/WebKit", "Library/Saved Application State",
+    "Library/Preferences", "Library/Preferences/ByHost", "Library/LaunchAgents", "Library/Logs",
+];
+
+/// Shape check for the app uninstaller, no disk access: an `.app` directly in `/Applications` or
+/// `~/Applications`, or one entry directly inside a [`SYSTEM_LEFTOVER_ROOTS`] or
+/// [`USER_LEFTOVER_ROOTS`] folder.
+pub fn is_app_path_shape(path: &Path, home: &Path) -> bool {
+    use std::path::Component;
+    if !path.is_absolute() || path.components().any(|c| matches!(c, Component::ParentDir | Component::CurDir)) {
+        return false;
+    }
+    let (Some(parent), Some(name)) = (path.parent(), path.file_name()) else { return false };
+    let is_app = Path::new(name).extension().is_some_and(|e| e == "app");
+    (is_app && (parent == Path::new("/Applications") || parent == home.join("Applications")))
+        || SYSTEM_LEFTOVER_ROOTS.iter().any(|root| parent == Path::new(root))
+        || USER_LEFTOVER_ROOTS.iter().any(|root| parent == home.join(root))
+}
+
+/// The app uninstaller's guard: [`is_app_path_shape`] on an existing, non-symlink path whose
+/// resolved location is itself; anything else falls back to [`is_allowed`].
+pub fn is_allowed_app_path(path: &Path, home: &Path) -> bool {
+    if !is_app_path_shape(path, home) {
+        return is_allowed(path, home);
+    }
+    if path.strip_prefix(home).is_ok_and(has_protected_cache_child) {
+        return false;
+    }
+    let Ok(meta) = std::fs::symlink_metadata(path) else { return false };
+    if meta.file_type().is_symlink() {
+        return false;
+    }
+    let (Some(parent), Some(name)) = (path.parent(), path.file_name()) else { return false };
+    // The parent must physically be the intended folder: a symlinked ~/Applications (or any
+    // redirected ancestor) is refused. Only the home folder itself may resolve elsewhere
+    // (e.g. /var → /private/var).
+    let expected = match parent.strip_prefix(home) {
+        Ok(rel) => canonical(home).map(|h| h.join(rel)),
+        Err(_) => Some(parent.to_path_buf()),
+    };
+    match (canonical(parent), expected, canonical(path)) {
+        (Some(real_parent), Some(expected), Some(real)) => real_parent == expected && real == expected.join(name),
+        _ => false,
+    }
+}
+
 /// Only direct children of the home cache roots identify protected subtrees.
 fn has_protected_cache_child(relative: &Path) -> bool {
     let mut components = relative.components();
@@ -199,5 +256,69 @@ mod tests {
         std::os::unix::fs::symlink(home.join(".ssh"), home.join("Library/Caches/keys")).unwrap();
         assert!(!is_allowed(&home.join("Library/Caches/escape"), &home));
         assert!(!is_allowed(&home.join("Library/Caches/keys"), &home));
+    }
+
+    #[test]
+    fn app_paths_allowed_one_level_only() {
+        let home = Path::new("/Users/me");
+        for ok in ["/Applications/Foo.app", "/Applications/Microsoft Word.app", "/Users/me/Applications/Bar.app",
+            "/Library/LaunchDaemons/com.foo.plist", "/Library/Application Support/Foo", "/Library/PrivilegedHelperTools/com.foo.helper"] {
+            assert!(is_app_path_shape(Path::new(ok), home), "{ok}");
+        }
+        for no in ["/Applications/Foo.app/Contents", "/Applications", "/Applications/notes.txt", "/System/Applications/Mail.app",
+            "/Library/LaunchDaemons", "/Library/LaunchDaemons/a/b.plist", "/Library/Keychains/x", "/Users/other/Applications/X.app",
+            "/Applications/../Library/Foo.app"] {
+            assert!(!is_app_path_shape(Path::new(no), home), "{no}");
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn app_path_must_not_be_a_symlink() {
+        let home = sandbox();
+        let real = home.join("Documents/Real.app");
+        fs::create_dir_all(&real).unwrap();
+        fs::create_dir_all(home.join("Applications")).unwrap();
+        std::os::unix::fs::symlink(&real, home.join("Applications/Link.app")).unwrap();
+        fs::create_dir_all(home.join("Applications/Mine.app")).unwrap();
+        assert!(!is_allowed_app_path(&home.join("Applications/Link.app"), &home));
+        assert!(is_allowed_app_path(&home.join("Applications/Mine.app"), &home));
+        assert!(!is_allowed_app_path(&home.join("Applications/Missing.app"), &home));
+    }
+
+    #[test]
+    fn uninstaller_reaches_user_leftover_folders_only_one_level() {
+        let home = Path::new("/Users/me");
+        for ok in ["/Users/me/Library/Preferences/com.foo.plist", "/Users/me/Library/Preferences/ByHost/com.foo.1.plist",
+            "/Users/me/Library/Containers/com.foo", "/Users/me/Library/Group Containers/T.com.foo",
+            "/Users/me/Library/Application Support/Foo", "/Users/me/Library/Saved Application State/com.foo.savedState"] {
+            assert!(is_app_path_shape(Path::new(ok), home), "{ok}");
+        }
+        for no in ["/Users/me/Library/Preferences", "/Users/me/Library/Keychains/login.keychain-db",
+            "/Users/me/Library/Containers/com.foo/Data", "/Users/me/Library/Mail/x"] {
+            assert!(!is_app_path_shape(Path::new(no), home), "{no}");
+        }
+    }
+
+    #[test]
+    fn uninstaller_guard_allows_preferences_but_not_protected_caches() {
+        let home = sandbox();
+        let pref = home.join("Library/Preferences/com.foo.plist");
+        fs::create_dir_all(pref.parent().unwrap()).unwrap();
+        fs::write(&pref, b"x").unwrap();
+        assert!(is_allowed_app_path(&pref, &home));
+        let pw = home.join("Library/Caches/ms-playwright-mcp");
+        fs::create_dir_all(&pw).unwrap();
+        assert!(!is_allowed_app_path(&pw, &home));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn app_guard_refuses_symlinked_parent_folder() {
+        let home = sandbox();
+        let elsewhere = home.join("Documents/Apps");
+        fs::create_dir_all(elsewhere.join("X.app")).unwrap();
+        std::os::unix::fs::symlink(&elsewhere, home.join("Applications")).unwrap();
+        assert!(!is_allowed_app_path(&home.join("Applications/X.app"), &home));
     }
 }
