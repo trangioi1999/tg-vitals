@@ -24,6 +24,12 @@ pub fn run() {
             commands::show_main,
             commands::quit_app,
         ])
+        .menu(app_menu)
+        .on_menu_event(|app, event| match event.id.as_ref() {
+            MENU_HIDE => tray::hide_main(app),
+            MENU_QUIT => app.exit(0),
+            _ => {}
+        })
         .setup(|app| {
             tray::create(app)?;
             state::start_sampler(app.handle().clone());
@@ -41,8 +47,8 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building tg-vitals")
         .run(|app, event| match event {
-            // Cmd+Q / Dock "Quit" (code None) only hides the window: the app lives in the menu bar.
-            // The tray's "Thoát tg-vitals" calls `app.exit(0)` (code Some) and really quits.
+            // An exit request without a code (if the runtime ever reports one for Cmd+Q / Dock
+            // "Quit") only hides the window. `app.exit(0)` (tray / ⌥⌘Q) carries a code and quits.
             RunEvent::ExitRequested { code: None, api, .. } => {
                 api.prevent_exit();
                 tray::hide_main(app);
@@ -51,6 +57,45 @@ pub fn run() {
             RunEvent::Reopen { .. } => tray::show_main(app),
             _ => {}
         });
+}
+
+const MENU_HIDE: &str = "hide_main";
+const MENU_QUIT: &str = "quit_all";
+
+/// App menu with Cmd+Q bound to "hide to the menu bar" instead of the default
+/// `terminate:` item, which kills the process before Tauri can intervene.
+/// ⌥⌘Q (and the tray menu) really quit.
+fn app_menu<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> tauri::Result<tauri::menu::Menu<R>> {
+    use tauri::menu::{Menu, MenuItem, PredefinedMenuItem as P, Submenu};
+    let name = app.package_info().name.clone();
+    let app_menu = Submenu::with_items(
+        app,
+        &name,
+        true,
+        &[
+            &P::about(app, None, None)?,
+            &P::separator(app)?,
+            &P::hide(app, None)?,
+            &P::hide_others(app, None)?,
+            &P::separator(app)?,
+            &MenuItem::with_id(app, MENU_HIDE, "Thu về thanh menu", true, Some("CmdOrCtrl+Q"))?,
+            &MenuItem::with_id(app, MENU_QUIT, "Thoát hẳn tg-vitals", true, Some("CmdOrCtrl+Alt+Q"))?,
+        ],
+    )?;
+    let edit = Submenu::with_items(
+        app,
+        "Edit",
+        true,
+        &[&P::undo(app, None)?, &P::redo(app, None)?, &P::separator(app)?, &P::cut(app, None)?,
+          &P::copy(app, None)?, &P::paste(app, None)?, &P::select_all(app, None)?],
+    )?;
+    let window = Submenu::with_items(
+        app,
+        "Window",
+        true,
+        &[&P::minimize(app, None)?, &P::close_window(app, None)?],
+    )?;
+    Menu::with_items(app, &[&app_menu, &edit, &window])
 }
 
 /// `appicon://localhost/<bundle path>` → 64 px PNG of that app's icon (cached).

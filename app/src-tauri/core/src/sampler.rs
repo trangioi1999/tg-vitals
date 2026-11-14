@@ -7,12 +7,16 @@ use crate::sensors::{volume_space, Sensors};
 use crate::{machine, memory, network, sys};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
+const VOLUME_REFRESH: std::time::Duration = std::time::Duration::from_secs(30);
+
 pub struct Sampler {
     cpu_previous: Option<Vec<CpuTicks>>,
     p_cores: usize,
     e_cores: usize,
     net_previous: Option<(u64, u64, Instant)>,
     sensors: Sensors,
+    /// (total, free) and when it was read; free space changes slowly and costs ~8 ms to read.
+    volume: Option<(Instant, (u64, u64))>,
     processes: ProcessSampler,
     model: String,
     chip: String,
@@ -35,6 +39,7 @@ impl Sampler {
             e_cores,
             net_previous: None,
             sensors: Sensors::new(),
+            volume: None,
             processes: ProcessSampler::new(),
             model: machine::family_from_model(&machine::hw_model()),
             chip: machine::chip(),
@@ -87,7 +92,14 @@ impl Sampler {
     }
 
     fn disk(&mut self) -> DiskInfo {
-        let (total, free) = volume_space();
+        let (total, free) = match self.volume {
+            Some((at, space)) if at.elapsed() < VOLUME_REFRESH => space,
+            _ => {
+                let space = volume_space();
+                self.volume = Some((Instant::now(), space));
+                space
+            }
+        };
         let (read, write) = self.sensors.disk_io();
         DiskInfo { total, free, read_per_sec: read, write_per_sec: write }
     }

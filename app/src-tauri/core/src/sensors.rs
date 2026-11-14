@@ -1,15 +1,31 @@
 //! Battery, disk I/O, temperature and volume space (IOKit + statfs).
 
-/// Average of the CPU die sensors. Names differ per chip generation.
+/// CPU die sensor name patterns, most specific first. Names differ per chip generation.
+const CPU_SENSOR_TIERS: [fn(&str) -> bool; 3] = [
+    |n| n.starts_with("pACC MTR Temp") || n.starts_with("eACC MTR Temp"),
+    |n| n.contains("tdie"),
+    |n| n.contains("CPU"),
+];
+
+/// Average of the CPU die sensors.
 pub fn cpu_temperature(sensors: &[(String, f64)]) -> Option<f64> {
     let valid = |t: &f64| *t > 5.0 && *t < 130.0;
-    let pick = |pred: &dyn Fn(&str) -> bool| -> Option<f64> {
+    CPU_SENSOR_TIERS.iter().find_map(|pred| {
         let temps: Vec<f64> = sensors.iter().filter(|(n, t)| pred(n) && valid(t)).map(|(_, t)| *t).collect();
         (!temps.is_empty()).then(|| temps.iter().sum::<f64>() / temps.len() as f64)
-    };
-    pick(&|n| n.starts_with("pACC MTR Temp") || n.starts_with("eACC MTR Temp"))
-        .or_else(|| pick(&|n| n.contains("tdie")))
-        .or_else(|| pick(&|n| n.contains("CPU")))
+    })
+}
+
+/// Indices of the sensors worth reading for the CPU temperature: every sensor of the first
+/// name tier that matches anything. Lets us read ~10 sensors per tick instead of ~60.
+pub fn cpu_sensor_indices(names: &[Option<String>]) -> Vec<usize> {
+    CPU_SENSOR_TIERS
+        .iter()
+        .map(|pred| {
+            names.iter().enumerate().filter(|(_, n)| n.as_deref().is_some_and(pred)).map(|(i, _)| i).collect::<Vec<_>>()
+        })
+        .find(|found| !found.is_empty())
+        .unwrap_or_default()
 }
 
 /// SMC temperature keys on Intel Macs, most specific first. Per-core keys (`TC1C`…) exist on
@@ -90,8 +106,12 @@ mod mac {
     use super::*;
     use crate::iokit::{self, HidThermal, Service, Smc};
     use crate::model::BatteryInfo;
+    use std::cell::Cell;
     use std::sync::{Arc, Mutex};
     use std::time::{Duration, Instant};
+
+    /// Temperatures move slowly; reading sensors is the most expensive part of a tick.
+    const TEMPERATURE_REFRESH: Duration = Duration::from_secs(3);
 
     /// How often to re-ask `system_profiler` for battery health (it changes over weeks).
     const HEALTH_REFRESH: Duration = Duration::from_secs(600);
@@ -103,8 +123,14 @@ mod mac {
 
     pub struct Sensors {
         thermal: Option<HidThermal>,
+        /// Which HID sensors feed the CPU temperature (chosen once).
+        cpu_sensors: Vec<usize>,
         /// Intel only: temperatures come from the SMC.
         smc: Option<Smc>,
+        /// SMC keys present on this Mac (chosen once).
+        smc_keys: Vec<&'static str>,
+        /// Last temperature and when it was read.
+        temperature_cache: Cell<Option<(Instant, Option<f64>)>>,
         disk_previous: Option<(u64, u64, Instant)>,
         has_battery: bool,
         /// Latest health from `system_profiler`, filled by a background thread.
@@ -122,16 +148,24 @@ mod mac {
         pub fn new() -> Self {
             // Intel Macs expose temperatures through SMC, not these IOHID sensors.
             if cfg!(target_arch = "aarch64") {
-                Self { thermal: HidThermal::new(), ..Self::new_without_thermal() }
+                let thermal = HidThermal::new();
+                let cpu_sensors = thermal.as_ref().map(|t| cpu_sensor_indices(t.names())).unwrap_or_default();
+                Self { thermal, cpu_sensors, ..Self::new_without_thermal() }
             } else {
-                Self { smc: Smc::open(), ..Self::new_without_thermal() }
+                let smc = Smc::open();
+                let present = smc.as_ref().map(|s| s.temperatures(SMC_CPU_KEYS)).unwrap_or_default();
+                let smc_keys = SMC_CPU_KEYS.iter().copied().filter(|k| present.iter().any(|(p, _)| p == k)).collect();
+                Self { smc, smc_keys, ..Self::new_without_thermal() }
             }
         }
 
         pub fn new_without_thermal() -> Self {
             Self {
                 thermal: None,
+                cpu_sensors: Vec::new(),
                 smc: None,
+                smc_keys: Vec::new(),
+                temperature_cache: Cell::new(None),
                 disk_previous: None,
                 has_battery: true,
                 macos_health: Arc::default(),
@@ -139,11 +173,23 @@ mod mac {
             }
         }
 
+        /// CPU temperature, re-read at most every `TEMPERATURE_REFRESH`.
         pub fn temperature(&self) -> Option<f64> {
-            if let Some(hid) = &self.thermal {
-                return cpu_temperature(&hid.read());
+            if let Some((at, value)) = self.temperature_cache.get() {
+                if at.elapsed() < TEMPERATURE_REFRESH {
+                    return value;
+                }
             }
-            smc_cpu_temperature(&self.smc.as_ref()?.temperatures(SMC_CPU_KEYS))
+            let value = self.read_temperature();
+            self.temperature_cache.set(Some((Instant::now(), value)));
+            value
+        }
+
+        fn read_temperature(&self) -> Option<f64> {
+            if let Some(hid) = &self.thermal {
+                return cpu_temperature(&hid.read_only(&self.cpu_sensors));
+            }
+            smc_cpu_temperature(&self.smc.as_ref()?.temperatures(&self.smc_keys))
         }
 
         /// All temperature sensors, for debugging new chips.
@@ -272,6 +318,16 @@ mod tests {
         let m3 = [s("PMU tdie1", 60.0), s("PMU tdie2", 62.0), s("NAND CH0 temp", 30.0), s("PMU tdie3", -1.0)];
         assert_eq!(cpu_temperature(&m3), Some(61.0));
         assert_eq!(cpu_temperature(&[s("NAND CH0 temp", 30.0)]), None);
+    }
+
+    #[test]
+    fn chooses_cpu_sensor_indices() {
+        let n = |v: &[Option<&str>]| v.iter().map(|o| o.map(String::from)).collect::<Vec<_>>();
+        let m3 = n(&[Some("NAND CH0 temp"), Some("PMU tdie1"), None, Some("PMU tdie2"), Some("CPU x")]);
+        assert_eq!(cpu_sensor_indices(&m3), vec![1, 3]);
+        let m1 = n(&[Some("pACC MTR Temp Sensor0"), Some("PMU tdie1"), Some("eACC MTR Temp Sensor1")]);
+        assert_eq!(cpu_sensor_indices(&m1), vec![0, 2]);
+        assert!(cpu_sensor_indices(&n(&[Some("gas gauge battery")])).is_empty());
     }
 
     #[test]
