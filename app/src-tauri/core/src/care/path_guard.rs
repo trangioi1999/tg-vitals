@@ -3,6 +3,7 @@
 //! 1. Must be strictly inside the user's home folder after resolving symlinks.
 //!    This alone rules out /System, /Library, /usr, /bin, /sbin, /Applications…
 //! 2. Must not be a protected folder itself, nor inside a forbidden subtree.
+use super::protected_cache::is_protected_cache_child;
 use std::path::{Path, PathBuf};
 
 /// Folders that may hold removable children but must never be removed themselves.
@@ -28,12 +29,19 @@ pub const FORBIDDEN_SUBTREES: &[&str] = &[
 pub const SYSTEM_PATHS: &[&str] = &["/System", "/Library", "/usr", "/bin", "/sbin", "/Applications", "/private", "/var", "/etc"];
 
 pub fn is_allowed(path: &Path, home: &Path) -> bool {
+    // Protect the named store even when it is a symlink to another home folder.
+    if path.strip_prefix(home).is_ok_and(has_protected_cache_child) {
+        return false;
+    }
     let (Some(home), Some(path)) = (canonical(home), canonical(path)) else {
         return false;
     };
     let Ok(relative) = path.strip_prefix(&home) else {
         return false;
     };
+    if has_protected_cache_child(relative) {
+        return false;
+    }
     let relative = relative.to_string_lossy();
     if relative.is_empty() || PROTECTED_ROOTS.contains(&relative.as_ref()) {
         return false;
@@ -44,6 +52,24 @@ pub fn is_allowed(path: &Path, home: &Path) -> bool {
     !FORBIDDEN_SUBTREES
         .iter()
         .any(|sub| relative == *sub || relative.starts_with(&format!("{sub}/")))
+}
+
+/// Only direct children of the home cache roots identify protected subtrees.
+fn has_protected_cache_child(relative: &Path) -> bool {
+    let mut components = relative.components();
+    let Some(first) = components.next() else { return false };
+    let first = first.as_os_str().to_string_lossy();
+    if first.eq_ignore_ascii_case("Library") {
+        let Some(second) = components.next() else { return false };
+        if !second.as_os_str().to_string_lossy().eq_ignore_ascii_case("Caches") {
+            return false;
+        }
+    } else if !first.eq_ignore_ascii_case(".cache") {
+        return false;
+    }
+    components.next().is_some_and(|child| {
+        is_protected_cache_child(&child.as_os_str().to_string_lossy())
+    })
 }
 
 /// Resolves symlinks and `..`. Missing paths are never allowed.
@@ -73,6 +99,53 @@ mod tests {
 
     fn rand() -> u128 {
         std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()
+    }
+
+    #[test]
+    fn identifies_only_direct_protected_cache_children() {
+        for root in ["Library/Caches", ".cache", "library/CACHES"] {
+            for child in ["ms-playwright-mcp", "CYPRESS", "HuggingFace-hub"] {
+                assert!(has_protected_cache_child(Path::new(&format!("{root}/{child}"))));
+                assert!(has_protected_cache_child(Path::new(&format!("{root}/{child}/nested/x"))));
+            }
+        }
+        for path in ["Library/Caches/com.app", "Library/Caches/com.app/ollama",
+            "Documents/ms-playwright", "other/.cache/ollama", ".cache", "Library/Caches"] {
+            assert!(!has_protected_cache_child(Path::new(path)), "{path}");
+        }
+    }
+
+    #[test]
+    fn refuses_runtime_and_model_stores_and_their_contents() {
+        let home = sandbox();
+        for root in ["Library/Caches", ".cache"] {
+            for child in ["ms-playwright-mcp", "MS-PLAYWRIGHT-go", "Buzz-models", "ollama"] {
+                let store = home.join(root).join(child);
+                fs::create_dir_all(store.join("chromium-1")).unwrap();
+                let file = store.join("chromium-1/x");
+                fs::write(&file, b"runtime or model").unwrap();
+                assert!(!is_allowed(&store, &home));
+                assert!(!is_allowed(&file, &home));
+            }
+            let ordinary = home.join(root).join("com.app");
+            fs::create_dir_all(&ordinary).unwrap();
+            assert!(is_allowed(&ordinary, &home));
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn refuses_symlink_aliases_of_protected_cache_stores() {
+        let home = sandbox();
+        let store = home.join("Library/Caches/ms-playwright-mcp");
+        fs::create_dir_all(&store).unwrap();
+        let alias = home.join("Downloads/browser");
+        std::os::unix::fs::symlink(&store, &alias).unwrap();
+        assert!(!is_allowed(&alias, &home));
+        let named_store = home.join(".cache/ollama");
+        fs::create_dir_all(named_store.parent().unwrap()).unwrap();
+        std::os::unix::fs::symlink(home.join("Documents/notes"), &named_store).unwrap();
+        assert!(!is_allowed(&named_store, &home));
     }
 
     #[test]
