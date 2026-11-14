@@ -1,4 +1,4 @@
-import { Check, Lock, Power, Search, Terminal } from "lucide-react";
+import { Check, Lock, Power, Search, Terminal, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { api, isTauri, type AppInfo, type AppLeftover, type TrashReport } from "../api";
 import { AppIcon } from "../components/ui";
@@ -17,6 +17,8 @@ export function Uninstall() {
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState<Sort>("size");
   const [selected, setSelected] = useState<string | null>(null);
+  // Last uninstall result: kept here so it survives the list reloading after every attempt.
+  const [result, setResult] = useState<{ name: string; report: TrashReport } | null>(null);
 
   const load = async () => {
     setApps(null);
@@ -69,6 +71,14 @@ export function Uninstall() {
           </div>
           <span className="uninstall-count">{apps.length} app · {fileBytes(total)}</span>
         </div>
+        {result && (
+          <div className={`uninstall-result banner ${result.report.failed.length ? "bad" : ""}`}>
+            <button className="icon-btn close" onClick={() => setResult(null)} title="Đóng"><X size={13} /></button>
+            Gỡ {result.name}: {result.report.trashed} mục vào Thùng rác · {fileBytes(result.report.bytes)}
+            {result.report.failed.length > 0 && " · chọn lại app để thử lại"}
+            {result.report.failed.map((f) => <div key={f.path} className="fail"><span>{tilde(f.path)}</span>{f.reason}</div>)}
+          </div>
+        )}
         <table className="proc-table">
           <thead>
             <tr><th>Tên</th><th className="right">Dung lượng</th><th className="right">Dùng lần cuối</th></tr>
@@ -92,18 +102,18 @@ export function Uninstall() {
         </table>
       </div>
       {current
-        ? <AppPanel key={current.path} app={current} onDone={load} />
+        ? <AppPanel key={current.path} app={current}
+            onDone={(report) => { if (report) setResult({ name: current.name, report }); load(); }} />
         : <aside className="inspector uninstall-panel empty-panel">Chọn một app để xem nó chiếm bao nhiêu và gỡ cùng dữ liệu nó để lại.</aside>}
     </div>
   );
 }
 
-function AppPanel({ app, onDone }: { app: AppInfo; onDone: () => void }) {
+function AppPanel({ app, onDone }: { app: AppInfo; onDone: (report?: TrashReport) => void }) {
   const [leftovers, setLeftovers] = useState<AppLeftover[] | null>(null);
   const [checked, setChecked] = useState<Set<string>>(new Set());
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [report, setReport] = useState<TrashReport | null>(null);
 
   useEffect(() => {
     api.appLeftovers(app.path).then((l) => {
@@ -123,9 +133,10 @@ function AppPanel({ app, onDone }: { app: AppInfo; onDone: () => void }) {
     setConfirming(false);
     setBusy(true);
     try {
-      const r = await api.uninstallApp(app.path, [...checked]);
-      setReport(r);
-      if (r.failed.length === 0) setTimeout(onDone, 1200);
+      // Always reload afterwards: even a partial result changes what is installed.
+      onDone(await api.uninstallApp(app.path, [...checked]));
+    } catch (e) {
+      onDone({ trashed: 0, bytes: 0, failed: [{ path: app.path, reason: String(e) }] });
     } finally {
       setBusy(false);
     }
@@ -161,13 +172,8 @@ function AppPanel({ app, onDone }: { app: AppInfo; onDone: () => void }) {
         ))}
       </ul>
 
-      {report ? (
-        <div className={`uninstall-result ${report.failed.length ? "bad" : ""}`}>
-          {report.trashed} mục đã vào Thùng rác · {fileBytes(report.bytes)}
-          {report.failed.map((f) => <div key={f.path} className="fail"><span>{tilde(f.path)}</span>{f.reason}</div>)}
-        </div>
-      ) : app.running ? (
-        <button className="btn wide" onClick={() => api.quitApp(app.bundleId).then(() => setTimeout(onDone, 1500))}>
+      {app.running ? (
+        <button className="btn wide" onClick={() => api.quitApp(app.bundleId).then(() => setTimeout(() => onDone(), 1500))}>
           <Power size={14} /> Thoát {app.name} trước khi gỡ
         </button>
       ) : confirming ? (

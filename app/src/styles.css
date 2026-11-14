@@ -433,6 +433,8 @@ button:not(:disabled) { cursor:pointer; }
 .btn.danger-fill:hover:not(:disabled) { filter:brightness(1.08); }
 .uninstall-result { font-size:12.5px; padding:10px 12px; border-radius:10px; background:#32d74b14; color:#59dd77; }
 .uninstall-result.bad { background:#ff453a14; color:#ff6961; }
+.uninstall-result.banner { position:relative; margin:10px 14px 0; padding-right:34px; }
+.uninstall-result .close { position:absolute; top:6px; right:6px; }
 .uninstall-result .fail { display:flex; flex-direction:column; margin-top:6px; color:var(--muted); font-size:11.5px; }
 .uninstall-result .fail span { color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 @media (max-width:1150px) {

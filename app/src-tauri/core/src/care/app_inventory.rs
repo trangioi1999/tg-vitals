@@ -68,7 +68,7 @@ pub fn cask_token(app_file_name: &str) -> String {
 }
 
 #[cfg(target_os = "macos")]
-pub use mac::{list_apps, list_apps_with};
+pub use mac::{installed_identities, list_apps, list_apps_with};
 
 #[cfg(target_os = "macos")]
 mod mac {
@@ -128,6 +128,22 @@ mod mac {
         apps
     }
 
+    /// Every installed app (removable or not, any depth up to 3) as the leftover matcher's
+    /// "stays installed" list. Unreadable bundles still count, with unknown id/team, so the
+    /// matcher stays conservative.
+    pub fn installed_identities(roots: &[PathBuf]) -> Vec<super::super::apps::AppIdentity> {
+        discover_bundles(roots, 3)
+            .into_iter()
+            .map(|path| {
+                let info = read_info_plist(&path).unwrap_or_default();
+                let get = |k: &str| info.get(k).and_then(|v| v.as_str()).unwrap_or_default().to_owned();
+                let stem = path.file_stem().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+                let name = [get("CFBundleDisplayName"), get("CFBundleName")].into_iter().find(|n| !n.is_empty()).unwrap_or(stem);
+                super::super::apps::AppIdentity { bundle_id: get("CFBundleIdentifier"), name, team_id: team_id(&path) }
+            })
+            .collect()
+    }
+
     /// Info.plist as JSON (`plutil` reads both XML and binary plists).
     fn read_info_plist(app: &Path) -> Option<serde_json::Map<String, serde_json::Value>> {
         let plist = app.join("Contents/Info.plist");
@@ -156,6 +172,30 @@ mod mac {
             .flat_map(|it| it.flatten().map(|e| e.file_name().to_string_lossy().into_owned()))
             .collect()
     }
+}
+
+/// Every `.app` under `roots` up to `max_depth` folders deep (e.g. `/Applications/Office/Excel.app`),
+/// never descending into a bundle and never following symlinks.
+pub fn discover_bundles(roots: &[std::path::PathBuf], max_depth: usize) -> Vec<std::path::PathBuf> {
+    fn walk(dir: &std::path::Path, depth: usize, max: usize, out: &mut Vec<std::path::PathBuf>) {
+        let Ok(entries) = std::fs::read_dir(dir) else { return };
+        for e in entries.flatten() {
+            if !e.file_type().is_ok_and(|t| t.is_dir()) {
+                continue;
+            }
+            let path = e.path();
+            if path.extension().is_some_and(|x| x == "app") {
+                out.push(path);
+            } else if depth + 1 < max {
+                walk(&path, depth + 1, max, out);
+            }
+        }
+    }
+    let mut out = Vec::new();
+    for root in roots {
+        walk(root, 0, max_depth, &mut out);
+    }
+    out
 }
 
 #[cfg(test)]
@@ -211,5 +251,18 @@ mod tests {
     fn cask_token_from_app_name() {
         assert_eq!(cask_token("DBeaver.app"), "dbeaver");
         assert_eq!(cask_token("Visual Studio Code.app"), "visual-studio-code");
+    }
+
+    #[test]
+    fn discovers_bundles_in_subfolders_without_entering_apps() {
+        let n = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+        let root = std::env::temp_dir().join(format!("tgv-inv-{n}"));
+        for d in ["Word.app/Contents", "Office/Excel.app/Contents", "Word.app/Contents/Helper.app", "a/b/c/Deep.app"] {
+            std::fs::create_dir_all(root.join(d)).unwrap();
+        }
+        let mut found: Vec<_> = discover_bundles(std::slice::from_ref(&root), 3)
+            .into_iter().map(|p| p.strip_prefix(&root).unwrap().to_string_lossy().into_owned()).collect();
+        found.sort();
+        assert_eq!(found, ["Office/Excel.app", "Word.app"]);
     }
 }

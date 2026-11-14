@@ -1,5 +1,6 @@
 //! Commands called from the frontend (`app/src/api/index.ts`).
 use crate::state::{home, AppState};
+use std::collections::HashMap;
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Manager, State};
 use tauri::ipc::Channel;
@@ -96,14 +97,17 @@ pub fn quit_self(app: AppHandle) {
 #[tauri::command]
 pub async fn list_apps(on_event: Channel<ScanEvent>, state: State<'_, AppState>) -> Result<Vec<AppInfo>, String> {
     let roots = vec![std::path::PathBuf::from("/Applications"), home().join("Applications")];
-    let apps = tauri::async_runtime::spawn_blocking(move || {
-        app_inventory::list_apps_with(&roots, &mut |path| {
+    let (apps, installed) = tauri::async_runtime::spawn_blocking(move || {
+        let apps = app_inventory::list_apps_with(&roots, &mut |path| {
             let _ = on_event.send(ScanEvent::Path { path: path.to_string() });
-        })
+        });
+        (apps, app_inventory::installed_identities(&roots))
     })
     .await
     .map_err(|e| e.to_string())?;
-    *state.app_paths.lock().unwrap() = apps.iter().map(|a| (a.path.clone(), a.size)).collect();
+    *state.app_paths.lock().unwrap() =
+        apps.iter().map(|a| (a.path.clone(), HashMap::from([(a.path.clone(), a.size)]))).collect();
+    *state.installed.lock().unwrap() = installed;
     *state.apps.lock().unwrap() = apps.clone();
     Ok(apps)
 }
@@ -115,14 +119,19 @@ pub async fn app_leftovers(bundle_path: String, state: State<'_, AppState>) -> R
     let apps = state.apps.lock().unwrap().clone();
     let target = apps.iter().find(|a| a.path == bundle_path).ok_or("App không có trong danh sách gần nhất")?;
     let me = target.identity();
-    // Everything that stays installed, by path: a second copy with the same id must block.
-    let others: Vec<_> = apps.iter().filter(|a| a.path != bundle_path).map(|a| a.identity()).collect();
+    // Everything that stays installed (any depth, removable or not). The app itself appears once
+    // in that list; drop one entry with its id so a *second* copy still blocks shared data.
+    let mut others = state.installed.lock().unwrap().clone();
+    if let Some(i) = others.iter().position(|o| o.bundle_id == me.bundle_id) {
+        others.remove(i);
+    }
     let leftovers = tauri::async_runtime::spawn_blocking(move || apps::find_leftovers(&me, &others, &apps::leftover_roots(&home())))
         .await
         .map_err(|e| e.to_string())?;
     let mut allowed = state.app_paths.lock().unwrap();
+    let mine = allowed.entry(bundle_path.clone()).or_default();
     for l in &leftovers {
-        allowed.insert(l.path.clone(), l.size.unwrap_or(0));
+        mine.insert(l.path.clone(), l.size.unwrap_or(0));
     }
     Ok(leftovers)
 }
@@ -146,13 +155,15 @@ pub fn quit_app(bundle_id: String, app: AppHandle) {
 #[tauri::command]
 pub async fn uninstall_app(bundle_path: String, paths: Vec<String>, state: State<'_, AppState>) -> Result<TrashReport, String> {
     let bundle_id = state.apps.lock().unwrap().iter().find(|a| a.path == bundle_path).map(|a| a.bundle_id.clone());
-    if vitals_core::process::running_bundles().contains(&bundle_path) {
+    // Only this app's own bundle + leftovers may be touched.
+    let allowed = state.app_paths.lock().unwrap().get(&bundle_path).cloned();
+    if let Err(reason) = apps::check_uninstall(&bundle_path, allowed.is_some(), &vitals_core::process::running_bundles()) {
         return Ok(TrashReport {
-            failed: paths.into_iter().map(|path| TrashFailure { path, reason: "App đang chạy, hãy thoát trước".into() }).collect(),
+            failed: paths.into_iter().map(|path| TrashFailure { path, reason: reason.into() }).collect(),
             ..Default::default()
         });
     }
-    let allowed = state.app_paths.lock().unwrap().clone();
+    let allowed = allowed.unwrap_or_default();
     let report = tauri::async_runtime::spawn_blocking(move || {
         let report = trasher::recycle_with_auth(&paths, &allowed, &home());
         if let Some(id) = bundle_id.filter(|_| !std::path::Path::new(&bundle_path).exists()) {

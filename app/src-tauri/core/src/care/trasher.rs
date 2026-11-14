@@ -36,8 +36,21 @@ pub fn trash(paths: &[String], allowed: &HashMap<String, u64>, home: &Path) -> T
 /// the admin password. `NSWorkspace.recycleURLs` was tried and fails without asking (spike,
 /// 2026-11-14). Guarded by [`path_guard::is_allowed_app_path`].
 pub fn recycle_with_auth(paths: &[String], allowed: &HashMap<String, u64>, home: &Path) -> TrashReport {
+    recycle_with(paths, allowed, home, &super::scanner::owned_by_user, &mut finder_delete)
+}
+
+/// [`recycle_with_auth`] with ownership and Finder injected (tests). Items needing the password go
+/// first: if Finder fails or the user cancels, **nothing** else is moved, so an app is never left
+/// installed with its data already in the Trash.
+pub fn recycle_with(
+    paths: &[String],
+    allowed: &HashMap<String, u64>,
+    home: &Path,
+    owned: &dyn Fn(&Path) -> bool,
+    finder: &mut dyn FnMut(&[String]) -> Result<(), String>,
+) -> TrashReport {
     let mut report = TrashReport::default();
-    let mut needs_finder = Vec::new();
+    let (mut mine, mut root) = (Vec::new(), Vec::new());
     for raw in paths {
         let fail = |reason: &str| TrashFailure { path: raw.clone(), reason: reason.into() };
         let Some(size) = allowed.get(raw) else {
@@ -49,28 +62,34 @@ pub fn recycle_with_auth(paths: &[String], allowed: &HashMap<String, u64>, home:
             report.failed.push(fail("Đường dẫn được bảo vệ, không cho phép xóa"));
             continue;
         }
-        if !super::scanner::owned_by_user(&path) {
-            needs_finder.push((raw.clone(), *size));
-            continue;
+        if owned(&path) { mine.push((raw.clone(), *size)) } else { root.push((raw.clone(), *size)) }
+    }
+    if !root.is_empty() {
+        let list: Vec<String> = root.iter().map(|(p, _)| p.clone()).collect();
+        let outcome = finder(&list);
+        if let Err(_) = &outcome {
+            let reason = finder_failure_reason(&outcome);
+            for (raw, _) in root.into_iter().chain(mine) {
+                report.failed.push(TrashFailure { path: raw, reason: reason.clone() });
+            }
+            return report;
         }
-        match move_to_trash(&path) {
+        for (raw, size) in root {
+            if Path::new(&raw).exists() {
+                report.failed.push(TrashFailure { path: raw, reason: finder_failure_reason(&outcome) });
+            } else {
+                report.trashed += 1;
+                report.bytes += size;
+            }
+        }
+    }
+    for (raw, size) in mine {
+        match move_to_trash(Path::new(&raw)) {
             Ok(()) => {
                 report.trashed += 1;
                 report.bytes += size;
             }
-            Err(reason) => report.failed.push(fail(&reason)),
-        }
-    }
-    if !needs_finder.is_empty() {
-        let list: Vec<String> = needs_finder.iter().map(|(p, _)| p.clone()).collect();
-        let outcome = finder_delete(&list);
-        for (raw, size) in needs_finder {
-            if !Path::new(&raw).exists() {
-                report.trashed += 1;
-                report.bytes += size;
-            } else {
-                report.failed.push(TrashFailure { path: raw, reason: finder_failure_reason(&outcome) });
-            }
+            Err(reason) => report.failed.push(TrashFailure { path: raw, reason }),
         }
     }
     report
@@ -163,6 +182,7 @@ fn move_to_trash(_path: &Path) -> Result<(), String> {
     Err("Chỉ hỗ trợ macOS".into())
 }
 
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -245,5 +265,23 @@ mod tests {
         assert_eq!(finder_failure_reason(&Err(cancelled.into())), "Đã huỷ");
         assert_eq!(finder_failure_reason(&Err("boom".into())), "boom");
         assert_eq!(finder_failure_reason(&Ok(())), "Finder không chuyển được vào Thùng rác");
+    }
+
+    #[test]
+    fn cancelled_password_moves_nothing() {
+        let n = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+        let home = std::env::temp_dir().join(format!("tgv-cancel-{n}"));
+        let app = home.join("Applications/Root.app");
+        let data = home.join("Library/Application Support/Root");
+        fs::create_dir_all(&app).unwrap();
+        fs::create_dir_all(&data).unwrap();
+        let (a, d) = (app.to_string_lossy().into_owned(), data.to_string_lossy().into_owned());
+        let allowed = HashMap::from([(a.clone(), 1), (d.clone(), 1)]);
+        // The app is "root-owned"; the user cancels Finder's password prompt.
+        let report = recycle_with(&[a.clone(), d.clone()], &allowed, &home, &|p| p != app.as_path(),
+            &mut |_| Err("Finder got an error: User canceled. (-128)".into()));
+        assert_eq!(report.trashed, 0);
+        assert!(app.exists() && data.exists(), "nothing may move when the prompt is cancelled");
+        assert!(report.failed.iter().all(|f| f.reason == "Đã huỷ"), "{:?}", report.failed);
     }
 }

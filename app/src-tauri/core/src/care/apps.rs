@@ -29,6 +29,14 @@ pub fn matches_leftover(app: &AppIdentity, others: &[AppIdentity], location: Loc
         return false;
     }
     let entry = entry.to_lowercase();
+    // An installed app whose id extends ours (com.x.Editor.Pro vs com.x.Editor) owns its own entries.
+    let claimed = others.iter().any(|o| {
+        let o = o.bundle_id.to_lowercase();
+        o.starts_with(&format!("{id}.")) && (entry == o || entry.starts_with(&format!("{o}.")))
+    });
+    if claimed {
+        return false;
+    }
     let by_id = entry == id || entry.starts_with(&format!("{id}."));
     match location {
         Location::ById => by_id,
@@ -37,10 +45,11 @@ pub fn matches_leftover(app: &AppIdentity, others: &[AppIdentity], location: Loc
         Location::GroupContainers => {
             let Some(team) = app.team_id.as_ref() else { return false };
             let team = team.to_lowercase();
+            // A team-wide container is ours only when every other app's team is known and different.
             entry == format!("{team}.{id}")
                 || (entry.starts_with(&format!("{team}."))
-                    && !others.iter().any(|other| other.team_id.as_ref()
-                        .is_some_and(|other_team| other_team.to_lowercase() == team)))
+                    && others.iter().all(|other| other.team_id.as_ref()
+                        .is_some_and(|other_team| other_team.to_lowercase() != team)))
         }
         Location::PlistById => entry == format!("{id}.plist"),
         Location::SavedState => entry == format!("{id}.savedstate"),
@@ -130,6 +139,18 @@ pub fn find_leftovers(app: &AppIdentity, others: &[AppIdentity], roots: &[Leftov
     }
     found.sort_by(|a, b| b.size.cmp(&a.size).then_with(|| a.path.cmp(&b.path)));
     found
+}
+
+/// Backend gate before uninstalling: the app must come from the latest listing and not be running
+/// (checked on the exact bundle path: two copies can share a bundle id).
+pub fn check_uninstall(bundle_path: &str, listed: bool, running: &std::collections::HashSet<String>) -> Result<(), &'static str> {
+    if !listed {
+        return Err("App không có trong danh sách gần nhất");
+    }
+    if running.contains(bundle_path) {
+        return Err("App đang chạy, hãy thoát trước");
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -302,5 +323,41 @@ mod tests {
             assert_eq!(found[1].size, None);
             assert!(found[0].size.is_some());
         }
+    }
+
+    #[test]
+    fn never_takes_data_of_an_installed_app_with_a_longer_id() {
+        let editor = app("com.example.Editor", "Editor", Some("T1"));
+        let pro = [app("com.example.Editor.Pro", "Editor Pro", Some("T1"))];
+        for (location, entry) in [
+            (Location::ById, "com.example.Editor.Pro"),
+            (Location::ById, "com.example.Editor.Pro.helper"),
+            (Location::LaunchPlist, "com.example.Editor.Pro.plist"),
+            (Location::ByHost, "com.example.Editor.Pro.ABC-1.plist"),
+        ] {
+            assert!(!matches_leftover(&editor, &pro, location, entry), "{entry}");
+        }
+        assert!(matches_leftover(&editor, &pro, Location::ById, "com.example.Editor"));
+        assert!(matches_leftover(&editor, &pro, Location::ById, "com.example.Editor.widget"));
+        // The longer id keeps its own data even while the shorter one stays installed.
+        let pro_app = app("com.example.Editor.Pro", "Editor Pro", Some("T1"));
+        let editor_stays = [app("com.example.Editor", "Editor", Some("T1"))];
+        assert!(matches_leftover(&pro_app, &editor_stays, Location::ById, "com.example.Editor.Pro"));
+    }
+
+    #[test]
+    fn team_prefix_needs_every_other_team_known() {
+        let word = app("com.microsoft.Word", "Word", Some("UBF8T346G9"));
+        let unknown = [app("com.x.unsigned", "X", None)];
+        assert!(!matches_leftover(&word, &unknown, Location::GroupContainers, "UBF8T346G9.Office"));
+        assert!(matches_leftover(&word, &unknown, Location::GroupContainers, "UBF8T346G9.com.microsoft.Word"));
+    }
+
+    #[test]
+    fn uninstall_check_needs_listed_and_stopped_app() {
+        let running: std::collections::HashSet<String> = ["/Applications/B.app".to_string()].into();
+        assert_eq!(check_uninstall("/Applications/A.app", true, &running), Ok(()));
+        assert_eq!(check_uninstall("/Applications/B.app", true, &running), Err("App đang chạy, hãy thoát trước"));
+        assert_eq!(check_uninstall("/Applications/C.app", false, &running), Err("App không có trong danh sách gần nhất"));
     }
 }
