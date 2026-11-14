@@ -3,7 +3,7 @@ import type { LucideIcon } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api, isTauri, type CleanupGroup, type ScanEvent, type TrashReport } from "../api";
 import { ACCENT, IconTile } from "../components/ui";
-import { fileBytes, fileBytesParts } from "../format";
+import { ago, fileBytes, fileBytesParts } from "../format";
 
 const GROUP_STYLE: Record<string, { icon: LucideIcon; color: string }> = {
   "xcode-derived": { icon: Hammer, color: ACCENT.cpu },
@@ -243,15 +243,6 @@ function ScanTerminal({ log, live }: { log: LogLine[]; live: boolean }) {
       </div>
     </div>
   );
-}
-
-/** Unix seconds → "hôm nay" / "3 ngày trước" / "2 tháng trước". */
-function ago(seconds: number): string {
-  const days = Math.floor((Date.now() / 1000 - seconds) / 86400);
-  if (days < 1) return "hôm nay";
-  if (days < 60) return `${days} ngày trước`;
-  if (days < 730) return `${Math.floor(days / 30)} tháng trước`;
-  return `${Math.floor(days / 365)} năm trước`;
 }
 
 const total = (g: CleanupGroup) => g.items.reduce((a, i) => a + i.size, 0);

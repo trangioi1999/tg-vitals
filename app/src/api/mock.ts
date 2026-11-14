@@ -1,5 +1,5 @@
 // Realistic fake data so the UI can be developed and previewed in a plain browser.
-import type { CleanupGroup, ProcessRow, ScanEvent, Snapshot } from "./types";
+import type { AppInfo, AppLeftover, CleanupGroup, ProcessRow, ScanEvent, Snapshot } from "./types";
 
 const GB = 1024 ** 3;
 const MB = 1024 ** 2;
@@ -127,4 +127,41 @@ export async function mockScan(onEvent: (e: ScanEvent) => void): Promise<Cleanup
     onEvent({ kind: "stepDone", title: s.title, bytes, items: s.group?.items.length ?? 0 });
   }
   return groups;
+}
+
+const DAY = 86400;
+const now = () => Math.floor(Date.now() / 1000);
+const APPS: AppInfo[] = [
+  { path: "/Applications/WebStorm.app", name: "WebStorm", bundleId: "com.jetbrains.WebStorm", version: "2025.3", size: 3.28e9, ownedByUser: true, lastUsed: now() - 195 * DAY, running: false, brewCask: null, teamId: "2ZEFAR8TH3" },
+  { path: "/Applications/Microsoft Word.app", name: "Microsoft Word", bundleId: "com.microsoft.Word", version: "16.103", size: 2.98e9, ownedByUser: false, lastUsed: null, running: false, brewCask: null, teamId: "UBF8T346G9" },
+  { path: "/Applications/Docker.app", name: "Docker", bundleId: "com.docker.docker", version: "4.48.0", size: 1.81e9, ownedByUser: true, lastUsed: now() - 207 * DAY, running: false, brewCask: null, teamId: "9BNSXJN65R" },
+  { path: "/Applications/Google Chrome.app", name: "Google Chrome", bundleId: "com.google.Chrome", version: "142.0", size: 1.54e9, ownedByUser: true, lastUsed: now() - 600, running: true, brewCask: null, teamId: "EQHXZ8M8AV" },
+  { path: "/Applications/DBeaver.app", name: "DBeaver", bundleId: "org.jkiss.dbeaver.core.product", version: "25.2", size: 0.52e9, ownedByUser: true, lastUsed: now() - 40 * DAY, running: false, brewCask: "dbeaver-community", teamId: "42B6MDKMW8" },
+  { path: "/Applications/Spotify.app", name: "Spotify", bundleId: "com.spotify.client", version: "1.2.74", size: 0.41e9, ownedByUser: true, lastUsed: null, running: false, brewCask: null, teamId: "2FNC3A47ZF" },
+];
+
+/** Browser preview: replays reading each app, then returns the list. */
+export async function mockApps(onEvent: (e: ScanEvent) => void): Promise<AppInfo[]> {
+  for (const a of APPS) {
+    await new Promise((r) => setTimeout(r, 180));
+    onEvent({ kind: "path", path: a.path });
+  }
+  return APPS.map((a) => ({ ...a }));
+}
+
+export function mockLeftovers(bundlePath: string): AppLeftover[] {
+  const app = APPS.find((a) => a.path === bundlePath);
+  if (!app) return [];
+  const lib = "/Users/me/Library";
+  const id = app.bundleId;
+  const list: AppLeftover[] = [
+    { path: `${lib}/Application Support/${app.name}`, name: app.name, size: 0.9e9, needsAdmin: false },
+    { path: `${lib}/Caches/${id}`, name: id, size: 0.31e9, needsAdmin: false },
+    { path: `${lib}/Preferences/${id}.plist`, name: `${id}.plist`, size: 12e3, needsAdmin: false },
+  ];
+  if (!app.ownedByUser) {
+    list.push({ path: `${lib}/Containers/${id}`, name: id, size: null, needsAdmin: false });
+    list.push({ path: `/Library/LaunchDaemons/${id}.helper.plist`, name: `${id}.helper.plist`, size: 4e3, needsAdmin: true });
+  }
+  return list;
 }

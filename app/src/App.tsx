@@ -4,6 +4,7 @@ import { Sidebar, type PageId } from "./components/Sidebar";
 import { ACCENT } from "./components/ui";
 import { pct, bytes, fileBytes } from "./format";
 import { Cleanup } from "./pages/Cleanup";
+import { Uninstall } from "./pages/Uninstall";
 import { Detail, type MetricPage } from "./pages/Detail";
 import { Overview } from "./pages/Overview";
 import { Processes } from "./pages/Processes";
@@ -11,7 +12,7 @@ import { useVitals } from "./useVitals";
 
 const TITLES: Record<PageId, string> = {
   overview: "Tổng quan", processes: "Tiến trình", cpu: "CPU", memory: "Bộ nhớ", disk: "Ổ đĩa",
-  network: "Mạng", energy: "Năng lượng", cleanup: "Dọn dẹp", about: "Về máy này",
+  network: "Mạng", energy: "Năng lượng", cleanup: "Dọn dẹp", uninstall: "Gỡ app", about: "Về máy này",
 };
 
 type Filter = "all" | "app" | "mine" | "system";
@@ -29,6 +30,7 @@ export default function App() {
   const subtitle =
     page === "processes" && s ? `${s.processes.length} process · ${threads} luồng`
       : page === "cleanup" ? "Chỉ chuyển vào Thùng rác, không xóa vĩnh viễn"
+      : page === "uninstall" ? "Gỡ app cùng dữ liệu nó để lại · mọi thứ vào Thùng rác"
         : s?.machine.model ?? "";
 
   return (
@@ -53,19 +55,20 @@ export default function App() {
               </div>
             </>
           )}
-          {page !== "cleanup" && page !== "about" && <span className={`live-status ${paused ? "paused" : ""}`}><i/>{paused ? "Tạm dừng" : "Trực tiếp"}</span>}
-          {page !== "cleanup" && (
+          {page !== "cleanup" && page !== "uninstall" && page !== "about" && <span className={`live-status ${paused ? "paused" : ""}`}><i/>{paused ? "Tạm dừng" : "Trực tiếp"}</span>}
+          {page !== "cleanup" && page !== "uninstall" && (
             <button className="icon-btn boxed" onClick={() => setPaused((p) => !p)} title={paused ? "Tiếp tục" : "Tạm dừng"}>
               {paused ? <Play size={14} /> : <Pause size={14} />}
             </button>
           )}
         </header>
 
-        <div className={`content ${page === "processes" ? "flush" : ""}`}>
+        <div className={`content ${page === "processes" || page === "uninstall" ? "flush" : ""}`}>
           {!s ? null
             : page === "overview" ? <Overview s={s} h={h} go={setPage} />
               : page === "processes" ? <Processes s={s} h={h} search={search} filter={filter} />
                 : page === "cleanup" ? <Cleanup />
+                : page === "uninstall" ? <Uninstall />
                   : page === "about" ? <About s={s} />
                     : <Detail page={page as MetricPage} s={s} h={h} />}
         </div>

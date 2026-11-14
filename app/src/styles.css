@@ -403,6 +403,38 @@ button:not(:disabled) { cursor:pointer; }
 .scan-summary:hover { color:var(--text); }
 .scan-summary-toggle { margin-left:auto; display:flex; align-items:center; gap:5px; font-family:-apple-system,system-ui,sans-serif; }
 @media (prefers-reduced-motion:reduce) { .scan-track > div, .hero-icon.scanning svg, .term-body .ln, .term-body .cursor, .scan-live i { animation:none!important; } }
+/* ---------- Gỡ app ---------- */
+.uninstall-loading { max-width:900px; margin:18px auto; padding:0 18px; width:100%; }
+.hero-sub.mono { font-family:"SF Mono",ui-monospace,Menlo,monospace; font-size:11.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.uninstall-bar { position:sticky; top:0; z-index:1; display:flex; align-items:center; gap:10px; padding:10px 14px; background:linear-gradient(#24262b,#1f2126); border-bottom:1px solid #08090b; }
+.uninstall-bar .search { width:220px; }
+.uninstall-count { margin-left:auto; color:var(--muted); font-size:12px; font-variant-numeric:tabular-nums; }
+.app-name { display:flex; flex-direction:column; line-height:1.2; }
+.app-name small { color:var(--faint); font-size:10.5px; }
+.pill-running { font-size:10px; padding:2px 6px; border-radius:5px; color:#59dd77; background:#32d74b1a; }
+.name-cell .lock, .lo-name .lock { color:#ff9f0a; flex-shrink:0; }
+.uninstall-panel { width:360px; display:flex; flex-direction:column; gap:12px; overflow-x:hidden; }
+.uninstall-panel header { margin-bottom:0; }
+.empty-panel { color:var(--muted); font-size:12.5px; line-height:1.6; justify-content:center; text-align:center; }
+.freed .big-value { font-size:30px; }
+.note { font-size:11.5px; color:var(--muted); line-height:1.5; padding:8px 10px; border-radius:8px; background:#ffffff08; border:1px solid #ffffff0d; }
+.note code { font-family:"SF Mono",ui-monospace,Menlo,monospace; color:var(--text); font-size:11px; }
+.leftovers { list-style:none; margin:0; padding:0; display:grid; grid-template-columns:minmax(0,1fr); gap:2px; }
+.leftovers li { display:flex; align-items:center; gap:10px; padding:6px 4px; border-radius:6px; min-width:0; }
+.leftovers li:hover { background:#ffffff08; }
+.leftovers li.muted { color:var(--muted); font-size:12px; }
+.lo-text { flex:1; min-width:0; display:flex; flex-direction:column; }
+.lo-name { display:flex; align-items:center; gap:5px; font-weight:600; font-size:12.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.lo-path { color:var(--faint); font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.lo-size { color:var(--muted); font-size:12px; font-variant-numeric:tabular-nums; white-space:nowrap; }
+.btn.wide { width:100%; height:34px; display:flex; align-items:center; justify-content:center; gap:7px; }
+.confirm-row { display:grid; grid-template-columns:auto 1fr; gap:8px; }
+.btn.danger-fill, .btn.danger-fill:hover:not(:disabled) { background:linear-gradient(#ff5b52,#e0302a); }
+.btn.danger-fill:hover:not(:disabled) { filter:brightness(1.08); }
+.uninstall-result { font-size:12.5px; padding:10px 12px; border-radius:10px; background:#32d74b14; color:#59dd77; }
+.uninstall-result.bad { background:#ff453a14; color:#ff6961; }
+.uninstall-result .fail { display:flex; flex-direction:column; margin-top:6px; color:var(--muted); font-size:11.5px; }
+.uninstall-result .fail span { color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 @media (max-width:1150px) {
  .sidebar { width:190px; }
  .content { padding:14px; }

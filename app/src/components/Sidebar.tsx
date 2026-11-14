@@ -1,4 +1,5 @@
 import {
+  PackageX,
   ChartNoAxesColumnIncreasing, Battery, Cpu, HardDrive, Info, LayoutGrid, List, MemoryStick, Settings, Sparkles, Wifi,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -6,7 +7,7 @@ import { isTauri, type Snapshot } from "../api";
 import { pct, rate, uptime } from "../format";
 import { ACCENT, IconTile } from "./ui";
 
-export type PageId = "overview" | "processes" | "cpu" | "memory" | "disk" | "network" | "energy" | "cleanup" | "about";
+export type PageId = "overview" | "processes" | "cpu" | "memory" | "disk" | "network" | "energy" | "cleanup" | "uninstall" | "about";
 
 interface Item {
   id: PageId;
@@ -38,6 +39,7 @@ const SECTIONS: { title?: string; items: Item[] }[] = [
     title: "Hệ thống",
     items: [
       { id: "cleanup", label: "Dọn dẹp", icon: Sparkles, color: ACCENT.disk },
+      { id: "uninstall", label: "Gỡ app", icon: PackageX, color: ACCENT.gpu },
       { id: "about", label: "Về máy này", icon: Info, color: ACCENT.gray },
     ],
   },
