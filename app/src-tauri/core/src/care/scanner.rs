@@ -1,6 +1,6 @@
 //! Read-only: never modifies the disk. Deleting is `trasher`'s job.
 use super::targets::{Target, DEFAULT_TARGETS, LARGE_FILE_BYTES, LARGE_FILE_ROOTS, PROJECT_ROOTS, STALE_DAYS};
-use super::{Category, CleanupGroup, CleanupItem};
+use super::{Category, CleanupGroup, CleanupItem, ScanEvent};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -17,33 +17,56 @@ impl Scanner {
 
     /// Every group with at least one non-empty item, biggest first.
     pub fn scan_all(&self) -> Vec<CleanupGroup> {
-        let mut groups: Vec<CleanupGroup> = DEFAULT_TARGETS.iter().filter_map(|t| self.scan_target(t)).collect();
+        self.scan_all_with(&mut |_| {})
+    }
+
+    /// Same as `scan_all`, reporting each step and folder to `on` as it goes.
+    pub fn scan_all_with(&self, on: &mut dyn FnMut(ScanEvent)) -> Vec<CleanupGroup> {
+        let total = DEFAULT_TARGETS.len() + 2;
+        let mut index = 0;
+        let mut groups = Vec::new();
+        let mut run = |title: &str, folders: Vec<PathBuf>, on: &mut dyn FnMut(ScanEvent), scan: &dyn Fn() -> Option<CleanupGroup>| {
+            on(ScanEvent::Step { index, total, title: title.into() });
+            index += 1;
+            for folder in folders.iter().filter(|f| f.is_dir()) {
+                on(ScanEvent::Path { path: folder.to_string_lossy().into_owned() });
+            }
+            let group = scan();
+            let (bytes, items) = group.as_ref().map_or((0, 0), |g| (g.total(), g.items.len()));
+            on(ScanEvent::StepDone { title: title.into(), bytes, items });
+            groups.extend(group);
+        };
+
+        for target in DEFAULT_TARGETS {
+            let folders = target.folders.iter().map(|f| self.home.join(f)).collect();
+            run(target.title, folders, on, &|| self.scan_target(target));
+        }
 
         let roots: Vec<PathBuf> = PROJECT_ROOTS.iter().map(|r| self.home.join(r)).collect();
-        let stale = self.stale_node_modules(&roots, STALE_DAYS, 4);
-        if !stale.is_empty() {
-            groups.push(CleanupGroup {
+        run("node_modules bỏ lâu", roots.clone(), on, &|| {
+            let stale = self.stale_node_modules(&roots, STALE_DAYS, 4);
+            (!stale.is_empty()).then(|| CleanupGroup {
                 id: "node-modules".into(),
                 title: "node_modules bỏ lâu".into(),
                 category: Category::Projects,
                 note: format!("Project không sửa hơn {STALE_DAYS} ngày, chạy lại npm install khi cần"),
                 safe: false,
                 items: stale,
-            });
-        }
+            })
+        });
 
         let roots: Vec<PathBuf> = LARGE_FILE_ROOTS.iter().map(|r| self.home.join(r)).collect();
-        let large = large_files(&roots, LARGE_FILE_BYTES, 3);
-        if !large.is_empty() {
-            groups.push(CleanupGroup {
+        run("File lớn", roots.clone(), on, &|| {
+            let large = large_files(&roots, LARGE_FILE_BYTES, 3);
+            (!large.is_empty()).then(|| CleanupGroup {
                 id: "large-files".into(),
                 title: "File lớn".into(),
                 category: Category::Files,
                 note: "File trên 500 MB trong Downloads, Desktop, Movies — xem kỹ trước khi dọn".into(),
                 safe: false,
                 items: large,
-            });
-        }
+            })
+        });
 
         groups.sort_by_key(|g| std::cmp::Reverse(g.total()));
         groups
@@ -226,6 +249,36 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("tgv-scan-{}-{n}", std::process::id()));
         fs::create_dir_all(&dir).unwrap();
         dir
+    }
+
+    #[test]
+    fn reports_every_step_in_order() {
+        let home = home();
+        write(&home.join("Library/Caches/com.app/a.bin"), 10_000);
+        let mut events = Vec::new();
+        let groups = Scanner::new(home.clone()).scan_all_with(&mut |e| events.push(e));
+
+        let total = DEFAULT_TARGETS.len() + 2;
+        let steps: Vec<_> = events.iter().filter_map(|e| match e {
+            ScanEvent::Step { index, total: t, .. } => Some((*index, *t)),
+            _ => None,
+        }).collect();
+        assert_eq!(steps, (0..total).map(|i| (i, total)).collect::<Vec<_>>());
+        assert_eq!(events.iter().filter(|e| matches!(e, ScanEvent::StepDone { .. })).count(), total);
+        // The caches folder exists, so it is announced, then its step reports what was found.
+        let caches = home.join("Library/Caches").to_string_lossy().into_owned();
+        assert!(events.contains(&ScanEvent::Path { path: caches }));
+        let found: u64 = events.iter().map(|e| match e { ScanEvent::StepDone { bytes, .. } => *bytes, _ => 0 }).sum();
+        assert_eq!(found, groups.iter().map(|g| g.total()).sum::<u64>());
+        assert!(found > 0);
+        // Missing folders are not announced.
+        assert!(!events.iter().any(|e| matches!(e, ScanEvent::Path { path } if path.contains("DerivedData"))));
+    }
+
+    #[test]
+    fn scan_event_json_shape() {
+        let e = ScanEvent::StepDone { title: "Log".into(), bytes: 5, items: 1 };
+        assert_eq!(serde_json::to_string(&e).unwrap(), r#"{"kind":"stepDone","title":"Log","bytes":5,"items":1}"#);
     }
 
     fn write(path: &Path, bytes: usize) {

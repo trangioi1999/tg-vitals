@@ -1,5 +1,5 @@
 // Realistic fake data so the UI can be developed and previewed in a plain browser.
-import type { CleanupGroup, ProcessRow, Snapshot } from "./types";
+import type { CleanupGroup, ProcessRow, ScanEvent, Snapshot } from "./types";
 
 const GB = 1024 ** 3;
 const MB = 1024 ** 2;
@@ -89,4 +89,25 @@ export function mockCleanup(): CleanupGroup[] {
     { id: "user-logs", title: "Log", category: "system", safe: true,
       note: "Chỉ cần khi debug sự cố cũ", items: [item("Library/Logs/DiagnosticReports", 0.2)] },
   ];
+}
+
+/** Browser preview: replays a scan as progress events, then returns `mockCleanup()`. */
+export async function mockScan(onEvent: (e: ScanEvent) => void): Promise<CleanupGroup[]> {
+  const groups = mockCleanup();
+  const steps = [
+    ...groups.map((g) => ({ title: g.title, paths: g.items.slice(0, 2).map((i) => i.path), group: g })),
+    { title: "Log", paths: ["~/Library/Logs"], group: undefined },
+  ];
+  const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  for (const [index, s] of steps.entries()) {
+    onEvent({ kind: "step", index, total: steps.length, title: s.title });
+    for (const path of s.paths) {
+      await wait(220);
+      onEvent({ kind: "path", path });
+    }
+    await wait(260);
+    const bytes = s.group?.items.reduce((a, i) => a + i.size, 0) ?? 0;
+    onEvent({ kind: "stepDone", title: s.title, bytes, items: s.group?.items.length ?? 0 });
+  }
+  return groups;
 }

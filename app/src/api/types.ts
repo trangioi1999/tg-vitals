@@ -88,6 +88,12 @@ export interface CleanupGroup {
   items: CleanupItem[];
 }
 
+/** Scan progress, streamed while `scanCleanup` runs (mirrors `care::ScanEvent`). */
+export type ScanEvent =
+  | { kind: "step"; index: number; total: number; title: string }
+  | { kind: "path"; path: string }
+  | { kind: "stepDone"; title: string; bytes: number; items: number };
+
 export interface TrashReport {
   trashed: number;
   bytes: number;

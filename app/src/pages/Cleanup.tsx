@@ -1,7 +1,7 @@
-import { Archive, Box, Check, ChevronRight, Code2, FileText, Film, Hammer, Package, Smartphone, Sparkles, Trash2 } from "lucide-react";
+import { Archive, Box, Check, ChevronRight, Code2, FileText, Film, Hammer, Package, Smartphone, Sparkles, Terminal, Trash2 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import { useMemo, useState } from "react";
-import { api, isTauri, type CleanupGroup, type TrashReport } from "../api";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { api, isTauri, type CleanupGroup, type ScanEvent, type TrashReport } from "../api";
 import { ACCENT, IconTile } from "../components/ui";
 import { fileBytes, fileBytesParts } from "../format";
 
@@ -22,6 +22,9 @@ const GROUP_STYLE: Record<string, { icon: LucideIcon; color: string }> = {
   "large-files": { icon: Film, color: ACCENT.purple },
 };
 
+/** One line of the scan terminal. */
+type LogLine = { kind: "step" | "path" | "done" | "empty"; text: string; bytes?: number };
+
 /** /Users/name/Library/Caches → ~/Library/Caches */
 const tilde = (path: string) => path.replace(/^\/Users\/[^/]+/, "~");
 
@@ -32,15 +35,50 @@ export function Cleanup() {
   const [busy, setBusy] = useState(false);
   const [report, setReport] = useState<TrashReport | null>(null);
   const [confirming, setConfirming] = useState(false);
+  // Scan progress: terminal log while scanning, folded into one summary line afterwards.
+  const [scanning, setScanning] = useState(false);
+  const [log, setLog] = useState<LogLine[]>([]);
+  const [progress, setProgress] = useState({ done: 0, total: 0 });
+  const [found, setFound] = useState(0);
+  const [elapsed, setElapsed] = useState(0);
+  const [logOpen, setLogOpen] = useState(false);
+
+  const onScanEvent = (e: ScanEvent) => {
+    if (e.kind === "step") {
+      setProgress({ done: e.index, total: e.total });
+      setLog((l) => [...l, { kind: "step", text: e.title }]);
+    } else if (e.kind === "path") {
+      setLog((l) => [...l, { kind: "path", text: tilde(e.path) }]);
+    } else {
+      setProgress((p) => ({ ...p, done: p.done + 1 }));
+      setFound((f) => f + e.bytes);
+      setLog((l) => [...l, e.bytes > 0
+        ? { kind: "done", text: `${e.title} · ${e.items} mục`, bytes: e.bytes }
+        : { kind: "empty", text: `${e.title} · không có gì` }]);
+    }
+  };
 
   const scan = async () => {
     setBusy(true);
+    setScanning(true);
     setReport(null);
-    const result = (await api.scanCleanup()).sort((a, b) => total(b) - total(a));
-    setGroups(result);
-    setSelected(new Set(result.filter((g) => g.safe).flatMap((g) => g.items.map((i) => i.path))));
-    setBusy(false);
+    setGroups(null);
+    setLog([]);
+    setFound(0);
+    setProgress({ done: 0, total: 0 });
+    setLogOpen(false);
+    const started = performance.now();
+    try {
+      const result = (await api.scanCleanup(onScanEvent)).sort((a, b) => total(b) - total(a));
+      setGroups(result);
+      setSelected(new Set(result.filter((g) => g.safe).flatMap((g) => g.items.map((i) => i.path))));
+    } finally {
+      setElapsed(performance.now() - started);
+      setScanning(false);
+      setBusy(false);
+    }
   };
+  const percent = progress.total ? Math.round((progress.done / progress.total) * 100) : 0;
 
   const all = useMemo(() => groups?.flatMap((g) => g.items) ?? [], [groups]);
   const selectedBytes = all.filter((i) => selected.has(i.path)).reduce((a, i) => a + i.size, 0);
@@ -67,7 +105,7 @@ export function Cleanup() {
   return (
     <div className="cleanup">
       <section className="hero">
-        <div className="hero-icon"><Trash2 size={30} /></div>
+        <div className={`hero-icon ${scanning ? "scanning" : ""}`}><Trash2 size={30} /></div>
         <div className="hero-text">
           {report ? (
             <>
@@ -79,8 +117,15 @@ export function Cleanup() {
               </div>
             </>
           ) : (
+            scanning ? (
             <>
-              <div className="big-label">{busy ? "Đang quét…" : groups ? "Có thể dọn" : "Chưa quét"}</div>
+              <div className="big-label">Đang quét <span className="live-status scan-live"><i />{percent}%</span></div>
+              <div className="big-row"><span className="big-value">{fileBytesParts(found)[0]}</span><span className="big-unit">{fileBytesParts(found)[1]} tìm thấy</span></div>
+              <div className="scan-track"><div style={{ width: `${percent}%` }} /></div>
+            </>
+            ) : (
+            <>
+              <div className="big-label">{busy ? "Đang dọn…" : groups ? "Có thể dọn" : "Chưa quét"}</div>
               <div className="big-row"><span className="big-value">{!groups ? "—" : bigValue}</span><span className="big-unit">{!groups ? "" : bigUnit}</span></div>
               <div className="hero-sub">
                 {groups
@@ -88,6 +133,7 @@ export function Cleanup() {
                   : "Bấm Quét để tìm cache, log, build tạm và file lớn · chỉ đọc, chưa xóa gì"}
               </div>
             </>
+            )
           )}
         </div>
         <div className="hero-actions">
@@ -101,6 +147,15 @@ export function Cleanup() {
           )}
         </div>
       </section>
+
+      {(scanning || logOpen) && log.length > 0 && <ScanTerminal log={log} live={scanning} />}
+      {!scanning && groups && log.length > 0 && (
+        <button className="scan-summary" onClick={() => setLogOpen((o) => !o)}>
+          <span className="ok">✓</span>
+          Quét {progress.total} bước · {fileBytes(found)} · {(elapsed / 1000).toFixed(1)}s
+          <span className="scan-summary-toggle"><Terminal size={13} />{logOpen ? "Ẩn log" : "Xem log"}</span>
+        </button>
+      )}
 
       {groups && totalBytes > 0 && (
         <div className="stack-bar">
@@ -158,6 +213,30 @@ export function Cleanup() {
             </section>
           );
         })}
+      </div>
+    </div>
+  );
+}
+
+/** macOS-style terminal window streaming the scan log; follows the newest line. */
+function ScanTerminal({ log, live }: { log: LogLine[]; live: boolean }) {
+  const body = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    body.current?.scrollTo({ top: body.current.scrollHeight });
+  }, [log.length]);
+  return (
+    <div className="term">
+      <div className="term-head"><b /><b /><b /><span>tg-vitals — scan</span></div>
+      <div className="term-body" ref={body}>
+        {log.map((l, i) => (
+          <div key={i} className={`ln ${l.kind}`}>
+            {l.kind === "step" && <><span className="p">❯</span> {l.text}</>}
+            {l.kind === "path" && <>  quét {l.text}</>}
+            {l.kind === "done" && <><span className="ok">  ✓</span> {l.text}<span className="sz">{fileBytes(l.bytes ?? 0)}</span></>}
+            {l.kind === "empty" && <>  – {l.text}</>}
+          </div>
+        ))}
+        <div className="ln">{!live && <span className="ok">✓ xong </span>}<span className={`cursor ${live ? "" : "idle"}`} /></div>
       </div>
     </div>
   );
