@@ -47,7 +47,7 @@ pub fn mach_to_ns(ticks: u64, numer: u32, denom: u32) -> u64 {
 }
 
 #[cfg(target_os = "macos")]
-pub use mac::ProcessSampler;
+pub use mac::{running_bundles, ProcessSampler};
 
 #[cfg(target_os = "macos")]
 mod mac {
@@ -136,6 +136,11 @@ mod mac {
         fn user_name(&mut self, uid: u32) -> String {
             self.users.entry(uid).or_insert_with(|| user_name(uid)).clone()
         }
+    }
+
+    /// Outermost `.app` bundle of every running process (used to block uninstalling a running app).
+    pub fn running_bundles() -> std::collections::HashSet<String> {
+        all_pids().into_iter().filter_map(|pid| bundle_path(&path_of(pid)).map(str::to_owned)).collect()
     }
 
     fn all_pids() -> Vec<i32> {
