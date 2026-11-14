@@ -1,6 +1,6 @@
 import {
   PackageX,
-  ChartNoAxesColumnIncreasing, Battery, Cpu, HardDrive, Info, LayoutGrid, List, MemoryStick, Settings, Sparkles, Wifi,
+  ChartNoAxesColumnIncreasing, Battery, Cpu, HardDrive, Info, LayoutGrid, List, MemoryStick, Sparkles, Wifi,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { isTauri, type Snapshot } from "../api";
@@ -79,9 +79,8 @@ export function Sidebar({ page, onSelect, snapshot }: { page: PageId; onSelect: 
           <div className="machine-sub">
             {snapshot ? `${snapshot.machine.chip} · Bật ${uptime(snapshot.machine.uptime)}` : ""}
           </div>
-          {version && <div className="app-version">tg-vitals {version}</div>}
+          {version && <div className="app-version">Version {version}</div>}
         </div>
-        <Settings size={16} className="muted" />
       </footer>
     </aside>
   );
