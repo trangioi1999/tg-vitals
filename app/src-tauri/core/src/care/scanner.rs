@@ -1,4 +1,5 @@
 //! Read-only: never modifies the disk. Deleting is `trasher`'s job.
+use super::protected_cache::is_protected_cache_child;
 use super::targets::{Target, DEFAULT_TARGETS, LARGE_FILE_BYTES, LARGE_FILE_ROOTS, PROJECT_DEPTH, PROJECT_ROOTS};
 use super::{Category, CleanupGroup, CleanupItem, ScanEvent};
 use std::fs;
@@ -25,13 +26,14 @@ impl Scanner {
         let total = DEFAULT_TARGETS.len() + 2;
         let mut index = 0;
         let mut groups = Vec::new();
-        let mut run = |title: &str, folders: Vec<PathBuf>, on: &mut dyn FnMut(ScanEvent), scan: &dyn Fn() -> Option<CleanupGroup>| {
+        type Scan<'a> = &'a mut dyn FnMut(&mut dyn FnMut(ScanEvent)) -> Option<CleanupGroup>;
+        let mut run = |title: &str, folders: Vec<PathBuf>, on: &mut dyn FnMut(ScanEvent), scan: Scan| {
             on(ScanEvent::Step { index, total, title: title.into() });
             index += 1;
             for folder in folders.iter().filter(|f| f.is_dir()) {
                 on(ScanEvent::Path { path: folder.to_string_lossy().into_owned() });
             }
-            let group = scan();
+            let group = scan(on);
             let (bytes, items) = group.as_ref().map_or((0, 0), |g| (g.total(), g.items.len()));
             on(ScanEvent::StepDone { title: title.into(), bytes, items });
             groups.extend(group);
@@ -39,12 +41,14 @@ impl Scanner {
 
         for target in DEFAULT_TARGETS {
             let folders = target.folders.iter().map(|f| self.home.join(f)).collect();
-            run(target.title, folders, on, &|| self.scan_target(target));
+            run(target.title, folders, on, &mut |_| self.scan_target(target));
         }
 
         let roots: Vec<PathBuf> = PROJECT_ROOTS.iter().map(|r| self.home.join(r)).collect();
-        run("File build trong project", roots.clone(), on, &|| {
-            let artifacts = super::projects::find_artifacts(&roots, PROJECT_DEPTH);
+        run("File build trong project", roots.clone(), on, &mut |on| {
+            let artifacts = super::projects::find_artifacts_with(&roots, PROJECT_DEPTH, &mut |i| {
+                on(ScanEvent::Found { path: i.path.clone(), bytes: i.size })
+            });
             (!artifacts.is_empty()).then(|| CleanupGroup {
                 id: "project-artifacts".into(),
                 title: "File build trong project".into(),
@@ -56,7 +60,7 @@ impl Scanner {
         });
 
         let roots: Vec<PathBuf> = LARGE_FILE_ROOTS.iter().map(|r| self.home.join(r)).collect();
-        run("File lớn", roots.clone(), on, &|| {
+        run("File lớn", roots.clone(), on, &mut |_| {
             let large = large_files(&roots, LARGE_FILE_BYTES, 3);
             (!large.is_empty()).then(|| CleanupGroup {
                 id: "large-files".into(),
@@ -129,7 +133,9 @@ fn children(folder: &Path, excluded: &[&str]) -> Vec<CleanupItem> {
         .filter(|e| {
             let name = e.file_name();
             let name = name.to_string_lossy();
-            name != ".DS_Store" && !excluded.contains(&name.as_ref())
+            name != ".DS_Store"
+                && !excluded.contains(&name.as_ref())
+                && !is_protected_cache_child(&name)
         })
         .map(|e| {
             let path = e.path();
@@ -206,6 +212,7 @@ mod tests {
         }).collect();
         assert_eq!(steps, (0..total).map(|i| (i, total)).collect::<Vec<_>>());
         assert_eq!(events.iter().filter(|e| matches!(e, ScanEvent::StepDone { .. })).count(), total);
+        assert!(!events.iter().any(|e| matches!(e, ScanEvent::Found { .. })), "no projects in this home");
         // The caches folder exists, so it is announced, then its step reports what was found.
         let caches = home.join("Library/Caches").to_string_lossy().into_owned();
         assert!(events.contains(&ScanEvent::Path { path: caches }));
@@ -248,6 +255,23 @@ mod tests {
         assert!(scanner.scan_target(&DEFAULT_TARGETS[2]).is_none());
     }
 
+    #[test]
+    fn skips_protected_cache_children_for_every_target() {
+        let home = home();
+        let scanner = Scanner::new(home.clone());
+        for target in DEFAULT_TARGETS {
+            for folder in target.folders {
+                write(&home.join(folder).join("ms-playwright-mcp/chromium-1/x"), 10_000);
+                write(&home.join(folder).join("HuggingFace-hub/model"), 10_000);
+                write(&home.join(folder).join("com.app/a.bin"), 10_000);
+            }
+            let group = scanner.scan_target(target).unwrap();
+            assert_eq!(group.items.len(), target.folders.len(), "{}", target.id);
+            assert!(group.items.iter().all(|item| item.name == "com.app"));
+        }
+    }
+
+    #[cfg(unix)]
     #[test]
     fn size_does_not_follow_symlinks() {
         let home = home();

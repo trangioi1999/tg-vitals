@@ -1,6 +1,7 @@
 //! Care: find junk (read-only) and move it to the Trash (only via [`trasher`]).
 pub mod path_guard;
 pub mod projects;
+pub mod protected_cache;
 pub mod scanner;
 pub mod targets;
 pub mod trasher;
@@ -55,6 +56,8 @@ pub enum ScanEvent {
     Step { index: usize, total: usize, title: String },
     /// A folder inside the current step is being read.
     Path { path: String },
+    /// Something worth cleaning was found inside the current step (shown as it is found).
+    Found { path: String, bytes: u64 },
     /// The current step finished; `bytes` / `items` found (0 when nothing).
     StepDone { title: String, bytes: u64, items: usize },
 }

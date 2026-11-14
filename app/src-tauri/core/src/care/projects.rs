@@ -49,15 +49,20 @@ pub fn artifact_markers(name: &str) -> Option<&'static [&'static str]> {
 /// `modified` on each item is when its *project* was last edited, so the UI can say
 /// "sửa lần cuối 12 ngày trước".
 pub fn find_artifacts(roots: &[PathBuf], max_depth: usize) -> Vec<CleanupItem> {
+    find_artifacts_with(roots, max_depth, &mut |_| {})
+}
+
+/// Same as `find_artifacts`, calling `on_found` for each artifact as soon as it is sized.
+pub fn find_artifacts_with(roots: &[PathBuf], max_depth: usize, on_found: &mut dyn FnMut(&CleanupItem)) -> Vec<CleanupItem> {
     let mut found = Vec::new();
     for root in roots {
-        walk(root, root, 0, max_depth, &mut found);
+        walk(root, root, 0, max_depth, &mut found, on_found);
     }
     found.sort_by_key(|i| std::cmp::Reverse(i.size));
     found
 }
 
-fn walk(root: &Path, dir: &Path, depth: usize, max_depth: usize, found: &mut Vec<CleanupItem>) {
+fn walk(root: &Path, dir: &Path, depth: usize, max_depth: usize, found: &mut Vec<CleanupItem>, on_found: &mut dyn FnMut(&CleanupItem)) {
     if depth > max_depth {
         return;
     }
@@ -75,7 +80,9 @@ fn walk(root: &Path, dir: &Path, depth: usize, max_depth: usize, found: &mut Vec
             if markers.iter().any(|m| dir.join(m).is_file()) && is_disposable(&path) {
                 let size = dir_size(&path);
                 if size > 0 {
-                    found.push(artifact_item(root, dir, &path, size));
+                    let item = artifact_item(root, dir, &path, size);
+                    on_found(&item);
+                    found.push(item);
                 }
             }
             // Never descend into an artifact (nested node_modules are part of it).
@@ -87,7 +94,7 @@ fn walk(root: &Path, dir: &Path, depth: usize, max_depth: usize, found: &mut Vec
         subdirs.push(path);
     }
     for sub in subdirs {
-        walk(root, &sub, depth + 1, max_depth, found);
+        walk(root, &sub, depth + 1, max_depth, found, on_found);
     }
 }
 
@@ -203,7 +210,9 @@ mod tests {
         write(&root.join("mono/package.json"), 10);
         write(&root.join("mono/app/src-tauri/Cargo.toml"), 10);
         write(&root.join("mono/app/src-tauri/target/release/x"), 20_000);
-        let found = find_artifacts(std::slice::from_ref(&root), 6);
+        let mut announced = Vec::new();
+        let found = find_artifacts_with(std::slice::from_ref(&root), 6, &mut |i| announced.push(i.name.clone()));
+        assert_eq!(announced, ["mono/app/src-tauri/target"]);
         assert_eq!(found.len(), 1);
         assert_eq!(found[0].name, "mono/app/src-tauri/target");
     }

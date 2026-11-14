@@ -388,8 +388,9 @@ button:not(:disabled) { cursor:pointer; }
   font:11.5px/1.75 "SF Mono",ui-monospace,Menlo,monospace; color:#c9ccd3; }
 .term-body .ln { white-space:pre; overflow:hidden; text-overflow:ellipsis; animation:scan-in .25s ease-out; }
 @keyframes scan-in { from { opacity:0; transform:translateY(4px) } }
-.term-body .path, .term-body .empty { color:#6b6f78; }
+.term-body .ln-path, .term-body .ln-empty { color:#6b6f78; }
 .term-body .p { color:#5ac8fa; }
+.term-body .plus { color:#bf5af2; }
 .term-body .ok, .scan-summary .ok { color:#59dd77; }
 .term-body .sz { float:right; color:#ffd465; }
 .term-body .cursor { display:inline-block; width:7px; height:13px; background:#c9ccd3; vertical-align:-2px; animation:scan-blink 1s steps(1) infinite; }

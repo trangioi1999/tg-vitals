@@ -7,7 +7,7 @@ import { fileBytes, fileBytesParts } from "../format";
 
 const GROUP_STYLE: Record<string, { icon: LucideIcon; color: string }> = {
   "xcode-derived": { icon: Hammer, color: ACCENT.cpu },
-  "node-modules": { icon: Code2, color: ACCENT.memory },
+  "project-artifacts": { icon: Code2, color: ACCENT.memory },
   docker: { icon: Box, color: ACCENT.network },
   "user-caches": { icon: Sparkles, color: ACCENT.purple },
   npm: { icon: Package, color: ACCENT.gpu },
@@ -23,7 +23,7 @@ const GROUP_STYLE: Record<string, { icon: LucideIcon; color: string }> = {
 };
 
 /** One line of the scan terminal. */
-type LogLine = { kind: "step" | "path" | "done" | "empty"; text: string; bytes?: number };
+type LogLine = { kind: "step" | "path" | "found" | "done" | "empty"; text: string; bytes?: number };
 
 /** /Users/name/Library/Caches → ~/Library/Caches */
 const tilde = (path: string) => path.replace(/^\/Users\/[^/]+/, "~");
@@ -49,6 +49,8 @@ export function Cleanup() {
       setLog((l) => [...l, { kind: "step", text: e.title }]);
     } else if (e.kind === "path") {
       setLog((l) => [...l, { kind: "path", text: tilde(e.path) }]);
+    } else if (e.kind === "found") {
+      setLog((l) => [...l, { kind: "found", text: tilde(e.path), bytes: e.bytes }]);
     } else {
       setProgress((p) => ({ ...p, done: p.done + 1 }));
       setFound((f) => f + e.bytes);
@@ -204,7 +206,7 @@ export function Cleanup() {
                         {selected.has(i.path) && <Check size={10} strokeWidth={3} />}
                       </button>
                       <span className="item-name">{i.name}</span>
-                      <span className="item-path">{tilde(i.path)}</span>
+                      <span className="item-path">{g.id === "project-artifacts" && i.modified ? `sửa lần cuối ${ago(i.modified)}` : tilde(i.path)}</span>
                       <span className="item-size">{fileBytes(i.size)}</span>
                     </li>
                   ))}
@@ -229,9 +231,10 @@ function ScanTerminal({ log, live }: { log: LogLine[]; live: boolean }) {
       <div className="term-head"><b /><b /><b /><span>tg-vitals — scan</span></div>
       <div className="term-body" ref={body}>
         {log.map((l, i) => (
-          <div key={i} className={`ln ${l.kind}`}>
+          <div key={i} className={`ln ln-${l.kind}`}>
             {l.kind === "step" && <><span className="p">❯</span> {l.text}</>}
             {l.kind === "path" && <>  quét {l.text}</>}
+            {l.kind === "found" && <><span className="plus">  +</span> {l.text}<span className="sz">{fileBytes(l.bytes ?? 0)}</span></>}
             {l.kind === "done" && <><span className="ok">  ✓</span> {l.text}<span className="sz">{fileBytes(l.bytes ?? 0)}</span></>}
             {l.kind === "empty" && <>  – {l.text}</>}
           </div>
@@ -240,6 +243,15 @@ function ScanTerminal({ log, live }: { log: LogLine[]; live: boolean }) {
       </div>
     </div>
   );
+}
+
+/** Unix seconds → "hôm nay" / "3 ngày trước" / "2 tháng trước". */
+function ago(seconds: number): string {
+  const days = Math.floor((Date.now() / 1000 - seconds) / 86400);
+  if (days < 1) return "hôm nay";
+  if (days < 60) return `${days} ngày trước`;
+  if (days < 730) return `${Math.floor(days / 30)} tháng trước`;
+  return `${Math.floor(days / 365)} năm trước`;
 }
 
 const total = (g: CleanupGroup) => g.items.reduce((a, i) => a + i.size, 0);

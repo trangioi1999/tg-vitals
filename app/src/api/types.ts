@@ -92,6 +92,7 @@ export interface CleanupGroup {
 export type ScanEvent =
   | { kind: "step"; index: number; total: number; title: string }
   | { kind: "path"; path: string }
+  | { kind: "found"; path: string; bytes: number }
   | { kind: "stepDone"; title: string; bytes: number; items: number };
 
 export interface TrashReport {

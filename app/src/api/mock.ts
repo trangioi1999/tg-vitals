@@ -68,13 +68,20 @@ export function mockSnapshot(): Snapshot {
 
 export function mockCleanup(): CleanupGroup[] {
   const item = (name: string, gb: number) => ({ path: `~/${name}`, name: name.split("/").pop()!, size: gb * GB, modified: null });
+  const artifact = (name: string, gb: number, daysAgo: number) =>
+    ({ path: `~/Documents/${name}`, name, size: gb * GB, modified: Math.floor(Date.now() / 1000) - daysAgo * 86400 });
   return [
     { id: "xcode-derived", title: "Xcode DerivedData", category: "xcode", safe: true,
       note: "Kết quả build tạm, lần build sau sẽ lâu hơn",
       items: [item("TgStudio-abxq", 6.2), item("Pulse-fkew", 2.1), item("Sample-ccnd", 0.8)] },
-    { id: "node-modules", title: "node_modules bỏ lâu", category: "projects", safe: false,
-      note: "Project không sửa hơn 30 ngày, chạy lại npm install khi cần",
-      items: [item("WebstormProjects/onboarding-project/node_modules", 1.4), item("WebstormProjects/untitled/node_modules", 0.6)] },
+    { id: "project-artifacts", title: "File build trong project", category: "projects", safe: false,
+      note: "target, node_modules, .next, .venv… tạo lại khi build / cài lại; không đụng file Git đang theo dõi",
+      items: [
+        artifact("vibe-code/tg-studio/src-tauri/target", 42, 2),
+        artifact("vibe-code/omni-monorepo/.angular", 1.2, 41),
+        artifact("vibe-code/tg-labs-mfe/node_modules", 0.9, 96),
+        artifact("WebstormProjects/onboarding-project/node_modules", 0.6, 210),
+      ] },
     { id: "docker", title: "Docker", category: "devtools", safe: false,
       note: "Image và build cache không dùng (docker system prune)",
       items: [item("Docker/build-cache", 3.8)] },
@@ -95,7 +102,11 @@ export function mockCleanup(): CleanupGroup[] {
 export async function mockScan(onEvent: (e: ScanEvent) => void): Promise<CleanupGroup[]> {
   const groups = mockCleanup();
   const steps = [
-    ...groups.map((g) => ({ title: g.title, paths: g.items.slice(0, 2).map((i) => i.path), group: g })),
+    ...groups.map((g) => ({
+      title: g.title,
+      paths: g.id === "project-artifacts" ? ["~/Documents", "~/WebstormProjects"] : g.items.slice(0, 2).map((i) => i.path),
+      group: g,
+    })),
     { title: "Log", paths: ["~/Library/Logs"], group: undefined },
   ];
   const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -104,6 +115,12 @@ export async function mockScan(onEvent: (e: ScanEvent) => void): Promise<Cleanup
     for (const path of s.paths) {
       await wait(220);
       onEvent({ kind: "path", path });
+    }
+    if (s.group?.id === "project-artifacts") {
+      for (const i of s.group.items) {
+        await wait(260);
+        onEvent({ kind: "found", path: i.path, bytes: i.size });
+      }
     }
     await wait(260);
     const bytes = s.group?.items.reduce((a, i) => a + i.size, 0) ?? 0;
