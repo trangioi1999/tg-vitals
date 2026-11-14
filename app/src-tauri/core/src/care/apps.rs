@@ -3,6 +3,7 @@ use super::scanner;
 use serde::Serialize;
 use std::{fs, path::{Path, PathBuf}};
 
+#[derive(Clone, Debug, PartialEq)]
 pub struct AppIdentity {
     pub bundle_id: String,
     pub name: String,
@@ -23,6 +24,10 @@ pub enum Location {
 /// `others` contains the apps that will remain installed.
 pub fn matches_leftover(app: &AppIdentity, others: &[AppIdentity], location: Location, entry: &str) -> bool {
     let id = app.bundle_id.to_lowercase();
+    // Another installed copy with the same bundle id shares all of this data.
+    if others.iter().any(|o| o.bundle_id.to_lowercase() == id) {
+        return false;
+    }
     let entry = entry.to_lowercase();
     let by_id = entry == id || entry.starts_with(&format!("{id}."));
     match location {
@@ -40,7 +45,8 @@ pub fn matches_leftover(app: &AppIdentity, others: &[AppIdentity], location: Loc
         Location::PlistById => entry == format!("{id}.plist"),
         Location::SavedState => entry == format!("{id}.savedstate"),
         Location::ByHost => entry.starts_with(&format!("{id}.")) && entry.ends_with(".plist"),
-        Location::LaunchPlist => entry.starts_with(&id) && entry.ends_with(".plist"),
+        // `com.foo.plist` or `com.foo.<helper>.plist`, never `com.foobar.plist` (another app).
+        Location::LaunchPlist => entry == format!("{id}.plist") || (entry.starts_with(&format!("{id}.")) && entry.ends_with(".plist")),
     }
 }
 
@@ -201,7 +207,26 @@ mod tests {
             assert!(!matches_leftover(&foo, &[], location, no));
             assert!(!matches_leftover(&foo, &[], location, "com.foo.helper.txt"));
         }
-        assert!(matches_leftover(&foo, &[], Location::LaunchPlist, "com.foobar.plist"));
+        // A different app whose id merely starts with ours is not ours.
+        assert!(!matches_leftover(&foo, &[], Location::LaunchPlist, "com.foobar.plist"));
+        assert!(matches_leftover(&foo, &[], Location::LaunchPlist, "com.foo.plist"));
+    }
+
+    #[test]
+    fn nothing_while_another_copy_with_the_same_id_stays() {
+        // e.g. two Antigravity.app bundles with one bundle id: their data is shared.
+        let ag = app("com.google.antigravity", "Antigravity", Some("EQHXZ8M8AV"));
+        let copy = [app("com.google.antigravity", "Antigravity", Some("EQHXZ8M8AV"))];
+        for (location, entry) in [
+            (Location::ById, "com.google.antigravity"),
+            (Location::ByIdOrName, "Antigravity"),
+            (Location::PlistById, "com.google.antigravity.plist"),
+            (Location::GroupContainers, "EQHXZ8M8AV.com.google.antigravity"),
+            (Location::LaunchPlist, "com.google.antigravity.helper.plist"),
+        ] {
+            assert!(matches_leftover(&ag, &[], location, entry), "{entry}");
+            assert!(!matches_leftover(&ag, &copy, location, entry), "{entry}");
+        }
     }
 
     #[test]

@@ -22,6 +22,13 @@ pub struct AppInfo {
     pub team_id: Option<String>,
 }
 
+impl AppInfo {
+    /// What the leftover matcher needs to know about this app.
+    pub fn identity(&self) -> super::apps::AppIdentity {
+        super::apps::AppIdentity { bundle_id: self.bundle_id.clone(), name: self.name.clone(), team_id: self.team_id.clone() }
+    }
+}
+
 /// Apple's own apps and tg-vitals itself are never offered for removal.
 pub fn is_offerable(bundle_id: &str) -> bool {
     !bundle_id.is_empty() && !bundle_id.starts_with("com.apple.") && bundle_id != "com.trangioi.tgvitals"
@@ -190,6 +197,14 @@ mod tests {
         assert!(!apps.is_empty());
         assert!(apps.iter().all(|a| !a.bundle_id.is_empty() && a.size > 0));
         assert!(apps.iter().all(|a| is_offerable(&a.bundle_id)));
+    }
+
+    #[test]
+    fn identity_carries_matcher_fields() {
+        let a = AppInfo { path: "/Applications/X.app".into(), name: "X".into(), bundle_id: "com.x".into(),
+            version: "1".into(), size: 1, owned_by_user: true, last_used: None, running: false,
+            brew_cask: None, team_id: Some("T".into()) };
+        assert_eq!(a.identity(), crate::care::apps::AppIdentity { bundle_id: "com.x".into(), name: "X".into(), team_id: Some("T".into()) });
     }
 
     #[test]
