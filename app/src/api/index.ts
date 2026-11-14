@@ -32,7 +32,7 @@ export const api = {
   /** Menu bar popup → open the main window. */
   showMain: (): Promise<void> => (isTauri ? call("show_main") : Promise.resolve()),
 
-  quit: (): Promise<void> => (isTauri ? call("quit_app") : Promise.resolve()),
+  quit: (): Promise<void> => (isTauri ? call("quit_self") : Promise.resolve()),
 };
 
 export type * from "./types";

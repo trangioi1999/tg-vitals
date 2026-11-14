@@ -13,6 +13,10 @@ pub struct AppState {
     pub last_request: Mutex<Instant>,
     /// Paths from the last cleanup scan → size. Only these may be trashed.
     pub scanned: Mutex<HashMap<String, u64>>,
+    /// Apps from the last "Gỡ app" listing (keyed by path: two copies can share a bundle id).
+    pub apps: Mutex<Vec<vitals_core::care::app_inventory::AppInfo>>,
+    /// App bundles + leftovers from the last listing → size. Only these may be uninstalled.
+    pub app_paths: Mutex<HashMap<String, u64>>,
     /// Bundle path → PNG bytes.
     pub icons: Mutex<HashMap<String, Arc<Vec<u8>>>>,
     /// When the tray popup was last hidden because it lost focus (to ignore the same click).
@@ -25,6 +29,8 @@ impl Default for AppState {
             latest: Mutex::new(None),
             last_request: Mutex::new(Instant::now()),
             scanned: Mutex::new(HashMap::new()),
+            apps: Mutex::new(Vec::new()),
+            app_paths: Mutex::new(HashMap::new()),
             icons: Mutex::new(HashMap::new()),
             popup_hidden_at: Mutex::new(None),
         }
