@@ -1,6 +1,6 @@
 # Gỡ app (App uninstaller) — design
 
-Ngày: 2026-11-14 · Trạng thái: chờ duyệt
+Ngày: 2026-11-14 · Trạng thái: đã duyệt (người dùng: "cứ học hỏi theo Mole")
 
 ## Vì sao
 
@@ -65,8 +65,9 @@ tự hỏi mật khẩu khi cần, không chạy shell và không phải tự es
   mục, có test):
   - Khớp **chính xác bundle id** hoặc **bundle id + "."** (extension của chính app, vd.
     `com.microsoft.Excel.widgetextension`) trong:
-    `~/Library/{Application Support, Caches, Containers, HTTPStorages, WebKit, Saved Application State
-    (<id>.savedState), Preferences (<id>.plist, ByHost/<id>.*.plist), LaunchAgents (<id>*.plist), Logs}`.
+    `~/Library/{Application Support, Application Scripts, Caches, Containers, HTTPStorages, WebKit,
+    Saved Application State (<id>.savedState), Preferences (<id>.plist, ByHost/<id>.*.plist),
+    LaunchAgents (<id>*.plist), Logs}` (danh sách theo Mole).
   - Khớp **theo tên app** chỉ ở `Application Support` và `Logs`, và chỉ khi không app nào khác đang cài
     có cùng tên đó hoặc cùng tiền tố nhà phát hành (vd. `JetBrains` bị loại khi còn IDE JetBrains khác).
   - `Group Containers`: chỉ khi tên là `<TEAMID>.<bundle id>` hoặc thư mục có tiền tố team chỉ app này
@@ -74,7 +75,9 @@ tự hỏi mật khẩu khi cần, không chạy shell và không phải tự es
     `Contents/_CodeSignature` không đủ → dùng `SecStaticCodeCopySigningInformation` của Security.framework;
     nếu không lấy được thì **không** nhận Group Container nào).
   - Mức hệ thống (thuộc root, cần mật khẩu): `/Library/{LaunchAgents, LaunchDaemons}/<id>*.plist`,
-    `/Library/Application Support/<tên|id>`, `/Library/Preferences/<id>.plist` — cùng luật khớp như trên.
+    `/Library/PrivilegedHelperTools/<id>*`, `/Library/{Application Support, Caches, Logs}/<tên|id>`,
+    `/Library/Preferences/<id>.plist` — cùng luật khớp như trên. Sau khi gỡ: `pkgutil --forget` các
+    receipt có id bắt đầu bằng bundle id (như khi dọn GlobalProtect), trong cùng lần xin quyền.
     Ghi chú cho người dùng: dịch vụ nền đã nạp sẽ dừng hẳn sau khi khởi động lại máy.
   - Bỏ mục không đo/đọc được (thiếu Full Disk Access với `Containers`): hiện "không đo được", không tick.
 - `trasher::recycle_with_auth(paths)`: gọi `NSWorkspace.recycleURLs` (hỏi mật khẩu khi có item thuộc
