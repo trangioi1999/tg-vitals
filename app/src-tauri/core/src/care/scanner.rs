@@ -1,5 +1,5 @@
 //! Read-only: never modifies the disk. Deleting is `trasher`'s job.
-use super::targets::{Target, DEFAULT_TARGETS, LARGE_FILE_BYTES, LARGE_FILE_ROOTS, PROJECT_ROOTS, STALE_DAYS};
+use super::targets::{Target, DEFAULT_TARGETS, LARGE_FILE_BYTES, LARGE_FILE_ROOTS, PROJECT_DEPTH, PROJECT_ROOTS};
 use super::{Category, CleanupGroup, CleanupItem, ScanEvent};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -43,15 +43,15 @@ impl Scanner {
         }
 
         let roots: Vec<PathBuf> = PROJECT_ROOTS.iter().map(|r| self.home.join(r)).collect();
-        run("node_modules bỏ lâu", roots.clone(), on, &|| {
-            let stale = self.stale_node_modules(&roots, STALE_DAYS, 4);
-            (!stale.is_empty()).then(|| CleanupGroup {
-                id: "node-modules".into(),
-                title: "node_modules bỏ lâu".into(),
+        run("File build trong project", roots.clone(), on, &|| {
+            let artifacts = super::projects::find_artifacts(&roots, PROJECT_DEPTH);
+            (!artifacts.is_empty()).then(|| CleanupGroup {
+                id: "project-artifacts".into(),
+                title: "File build trong project".into(),
                 category: Category::Projects,
-                note: format!("Project không sửa hơn {STALE_DAYS} ngày, chạy lại npm install khi cần"),
+                note: "target, node_modules, .next, .venv… tạo lại khi build / cài lại; không đụng file Git đang theo dõi".into(),
                 safe: false,
-                items: stale,
+                items: artifacts,
             })
         });
 
@@ -92,64 +92,6 @@ impl Scanner {
             items,
         })
     }
-
-    /// `node_modules` folders under `roots` whose project folder hasn't changed for `stale_days`.
-    pub fn stale_node_modules(&self, roots: &[PathBuf], stale_days: u64, max_depth: usize) -> Vec<CleanupItem> {
-        let cutoff = self.now - std::time::Duration::from_secs(stale_days * 86_400);
-        let mut found = Vec::new();
-        for root in roots {
-            walk_projects(root, 0, max_depth, cutoff, &mut found);
-        }
-        found.sort_by_key(|i| std::cmp::Reverse(i.size));
-        found
-    }
-}
-
-fn walk_projects(dir: &Path, depth: usize, max_depth: usize, cutoff: SystemTime, found: &mut Vec<CleanupItem>) {
-    if depth > max_depth {
-        return;
-    }
-    let Ok(entries) = fs::read_dir(dir) else { return };
-    for entry in entries.flatten() {
-        let name = entry.file_name();
-        let name = name.to_string_lossy();
-        if name.starts_with('.') {
-            continue;
-        }
-        // file_type() does not follow symlinks.
-        let Ok(kind) = entry.file_type() else { continue };
-        if !kind.is_dir() {
-            continue;
-        }
-        let path = entry.path();
-        if name == "node_modules" {
-            if let Some(project_modified) = project_modified(dir) {
-                if project_modified < cutoff {
-                    found.push(item(&path, dir_size(&path), Some(project_modified)));
-                }
-            }
-            // Never descend into node_modules.
-        } else {
-            walk_projects(&path, depth + 1, max_depth, cutoff, found);
-        }
-    }
-}
-
-/// Newest modification among the project folder and its direct children (except node_modules),
-/// so editing `src/` or `package.json` counts as activity.
-fn project_modified(dir: &Path) -> Option<SystemTime> {
-    let mut newest = fs::symlink_metadata(dir).and_then(|m| m.modified()).ok()?;
-    if let Ok(entries) = fs::read_dir(dir) {
-        for entry in entries.flatten() {
-            if entry.file_name() == "node_modules" {
-                continue;
-            }
-            if let Ok(m) = entry.metadata().and_then(|m| m.modified()) {
-                newest = newest.max(m);
-            }
-        }
-    }
-    Some(newest)
 }
 
 fn large_files(roots: &[PathBuf], min_bytes: u64, max_depth: usize) -> Vec<CleanupItem> {
@@ -242,7 +184,6 @@ fn allocated(meta: &fs::Metadata) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::time::Duration;
 
     fn home() -> PathBuf {
         let n = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
@@ -307,26 +248,6 @@ mod tests {
         assert!(scanner.scan_target(&DEFAULT_TARGETS[2]).is_none());
     }
 
-    #[test]
-    fn finds_only_stale_node_modules_and_never_descends() {
-        let home = home();
-        let projects = home.join("WebstormProjects");
-        write(&projects.join("old/node_modules/left-pad/index.js"), 5_000);
-        write(&projects.join("old/node_modules/x/node_modules/y/i.js"), 5_000);
-        write(&projects.join("fresh/node_modules/react/index.js"), 5_000);
-        // Pretend "now" is 60 days ahead: everything is stale except what we touch later.
-        let mut scanner = Scanner::new(home.clone());
-        scanner.now = SystemTime::now() + Duration::from_secs(60 * 86_400);
-        let found = scanner.stale_node_modules(std::slice::from_ref(&projects), 30, 4);
-        assert_eq!(found.len(), 2, "one per project, nested node_modules not listed separately");
-        assert!(found.iter().all(|i| i.name == "node_modules"));
-
-        // Real "now": nothing is 30 days old.
-        let scanner = Scanner::new(home);
-        assert!(scanner.stale_node_modules(&[projects], 30, 4).is_empty());
-    }
-
-    #[cfg(unix)]
     #[test]
     fn size_does_not_follow_symlinks() {
         let home = home();

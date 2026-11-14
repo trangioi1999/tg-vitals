@@ -1,5 +1,6 @@
 //! Care: find junk (read-only) and move it to the Trash (only via [`trasher`]).
 pub mod path_guard;
+pub mod projects;
 pub mod scanner;
 pub mod targets;
 pub mod trasher;

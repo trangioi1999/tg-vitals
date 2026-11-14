@@ -76,13 +76,15 @@ pub const DEFAULT_TARGETS: &[Target] = &[
     },
 ];
 
-/// Folders (relative to home) searched for stale `node_modules`.
+/// Folders (relative to home) searched for project build artifacts (`care::projects`).
 pub const PROJECT_ROOTS: &[&str] = &[
-    "WebstormProjects", "Projects", "projects", "code", "Code", "dev", "Developer", "src", "work", "Sites",
+    "Documents", "WebstormProjects", "Projects", "projects", "code", "Code", "dev", "Developer", "Development",
+    "src", "work", "Workspace", "GitHub", "Repos", "Sites", "www",
 ];
+/// How deep under a project root to look, e.g. Documents/vibe-code/app/app/src-tauri/target.
+pub const PROJECT_DEPTH: usize = 6;
 
 /// Folders (relative to home) searched for large files.
 pub const LARGE_FILE_ROOTS: &[&str] = &["Downloads", "Desktop", "Movies"];
 
-pub const STALE_DAYS: u64 = 30;
 pub const LARGE_FILE_BYTES: u64 = 500 * 1024 * 1024;
