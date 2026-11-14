@@ -6,6 +6,7 @@ import type { LucideIcon } from "lucide-react";
 import { isTauri, type Snapshot } from "../api";
 import { pct, rate, uptime } from "../format";
 import { ACCENT, IconTile } from "./ui";
+import { useAppVersion } from "../useVitals";
 
 export type PageId = "overview" | "processes" | "cpu" | "memory" | "disk" | "network" | "energy" | "cleanup" | "uninstall" | "about";
 
@@ -46,6 +47,7 @@ const SECTIONS: { title?: string; items: Item[] }[] = [
 ];
 
 export function Sidebar({ page, onSelect, snapshot }: { page: PageId; onSelect: (p: PageId) => void; snapshot: Snapshot | null }) {
+  const version = useAppVersion();
   return (
     <aside className="sidebar">
       <div className={`traffic ${isTauri ? "native" : ""}`} data-tauri-drag-region>
@@ -77,6 +79,7 @@ export function Sidebar({ page, onSelect, snapshot }: { page: PageId; onSelect: 
           <div className="machine-sub">
             {snapshot ? `${snapshot.machine.chip} · Bật ${uptime(snapshot.machine.uptime)}` : ""}
           </div>
+          {version && <div className="app-version">tg-vitals {version}</div>}
         </div>
         <Settings size={16} className="muted" />
       </footer>

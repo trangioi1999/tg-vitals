@@ -47,6 +47,7 @@ nav { flex: 1; overflow-y: auto; }
 .sidebar-foot { display: flex; align-items: center; justify-content: space-between; padding: 10px 8px 0; }
 .machine { font-weight: 600; }
 .machine-sub { font-size: 11px; color: var(--muted); margin-top: 2px; }
+.app-version { font-size: 10.5px; color: var(--faint); margin-top: 3px; font-variant-numeric: tabular-nums; }
 .muted { color: var(--muted); }
 
 .icon-tile { display: inline-grid; place-items: center; border-radius: 6px; flex-shrink: 0; }

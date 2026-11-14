@@ -49,6 +49,13 @@ export const api = {
 
   revealPath: (path: string): Promise<void> => (isTauri ? call("reveal_path", { path }) : Promise.resolve()),
 
+  /** Version of the running app (tauri.conf.json), or package.json in the browser preview. */
+  appVersion: async (): Promise<string> => {
+    if (!isTauri) return __APP_VERSION__;
+    const { getVersion } = await import("@tauri-apps/api/app");
+    return getVersion();
+  },
+
   /** Menu bar popup → open the main window. */
   showMain: (): Promise<void> => (isTauri ? call("show_main") : Promise.resolve()),
 

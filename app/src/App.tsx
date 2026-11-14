@@ -8,7 +8,7 @@ import { Uninstall } from "./pages/Uninstall";
 import { Detail, type MetricPage } from "./pages/Detail";
 import { Overview } from "./pages/Overview";
 import { Processes } from "./pages/Processes";
-import { useVitals } from "./useVitals";
+import { useAppVersion, useVitals } from "./useVitals";
 
 const TITLES: Record<PageId, string> = {
   overview: "Tổng quan", processes: "Tiến trình", cpu: "CPU", memory: "Bộ nhớ", disk: "Ổ đĩa",
@@ -86,6 +86,7 @@ export default function App() {
 }
 
 function About({ s }: { s: NonNullable<ReturnType<typeof useVitals>["snapshot"]> }) {
+  const version = useAppVersion();
   return (
     <section className="card about">
       <h2>{s.machine.model}</h2>
@@ -94,7 +95,7 @@ function About({ s }: { s: NonNullable<ReturnType<typeof useVitals>["snapshot"]>
         <dt>Core</dt><dd>{s.cpu.pCores} hiệu năng + {s.cpu.perCore.length - s.cpu.pCores} tiết kiệm</dd>
         <dt>Bộ nhớ</dt><dd>{bytes(s.memory.total)}</dd>
         <dt>Ổ đĩa</dt><dd>{fileBytes(s.disk.total)}</dd>
-        <dt>tg-vitals</dt><dd>0.2.0</dd>
+        <dt>tg-vitals</dt><dd>{version ? `Phiên bản ${version}` : "—"}</dd>
       </dl>
     </section>
   );
