@@ -402,13 +402,26 @@ button:not(:disabled) { cursor:pointer; }
   background:linear-gradient(155deg,#34373f 0%,#26292f 24%,#1d2026 100%); border:1px solid #ffffff1c; box-shadow:inset 0 1px 0 #ffffff24,0 3px 8px #00000030; }
 .scan-summary:hover { color:var(--text); }
 .scan-summary-toggle { margin-left:auto; display:flex; align-items:center; gap:5px; font-family:-apple-system,system-ui,sans-serif; }
-@media (prefers-reduced-motion:reduce) { .scan-track > div, .hero-icon.scanning svg, .term-body .ln, .term-body .cursor, .scan-live i { animation:none!important; } }
+@media (prefers-reduced-motion:reduce) { .spin, .scan-track > div, .hero-icon.scanning svg, .term-body .ln, .term-body .cursor, .scan-live i { animation:none!important; } }
 /* ---------- Gỡ app ---------- */
 .uninstall-loading { max-width:900px; margin:18px auto; padding:0 18px; width:100%; }
 .hero-sub.mono { font-family:"SF Mono",ui-monospace,Menlo,monospace; font-size:11.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.uninstall-bar { position:sticky; top:0; z-index:1; display:flex; align-items:center; gap:10px; padding:10px 14px; background:linear-gradient(#24262b,#1f2126); border-bottom:1px solid #08090b; }
+.uninstall-main { flex:1; min-width:0; display:flex; flex-direction:column; }
+.uninstall-bar { flex-shrink:0; display:flex; align-items:center; gap:10px; padding:10px 14px; background:linear-gradient(#24262b,#1f2126); border-bottom:1px solid #08090b; }
 .uninstall-bar .search { width:220px; }
-.uninstall-count { margin-left:auto; color:var(--muted); font-size:12px; font-variant-numeric:tabular-nums; }
+.uninstall-count { margin-left:auto; display:flex; align-items:center; gap:6px; color:var(--muted); font-size:12px; font-variant-numeric:tabular-nums; }
+.spin { animation:spin 1s linear infinite; }
+@keyframes spin { to { transform:rotate(360deg) } }
+.uninstall-panel { position:relative; }
+.uninstall-panel.is-busy > :not(.panel-busy) { filter:blur(1.5px); opacity:.35; pointer-events:none; transition:opacity .2s; }
+.panel-busy { position:absolute; inset:0; z-index:2; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px; padding:24px; text-align:center; background:#14161a8c; }
+.panel-busy .spin { color:#5ac8fa; }
+.busy-title { font-size:15px; font-weight:700; }
+.busy-sub { color:var(--muted); font-size:12px; line-height:1.5; }
+.panel-busy .scan-track { width:80%; }
+.result-panel { align-items:center; text-align:center; justify-content:center; }
+.result-icon.ok { color:#32d74b; } .result-icon.bad { color:#ff9f0a; }
+.result-panel .uninstall-result { align-self:stretch; text-align:left; }
 .app-name { display:flex; flex-direction:column; line-height:1.2; }
 .app-name small { color:var(--faint); font-size:10.5px; }
 .pill-running { font-size:10px; padding:2px 6px; border-radius:5px; color:#59dd77; background:#32d74b1a; }
@@ -433,8 +446,6 @@ button:not(:disabled) { cursor:pointer; }
 .btn.danger-fill:hover:not(:disabled) { filter:brightness(1.08); }
 .uninstall-result { font-size:12.5px; padding:10px 12px; border-radius:10px; background:#32d74b14; color:#59dd77; }
 .uninstall-result.bad { background:#ff453a14; color:#ff6961; }
-.uninstall-result.banner { position:relative; margin:10px 14px 0; padding-right:34px; }
-.uninstall-result .close { position:absolute; top:6px; right:6px; }
 .uninstall-result .fail { display:flex; flex-direction:column; margin-top:6px; color:var(--muted); font-size:11.5px; }
 .uninstall-result .fail span { color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 @media (max-width:1150px) {

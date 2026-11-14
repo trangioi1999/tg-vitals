@@ -1,4 +1,4 @@
-import { Check, Lock, Power, Search, Terminal, X } from "lucide-react";
+import { Check, CheckCircle2, Lock, Power, RefreshCw, Search, Terminal, XCircle } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { api, isTauri, type AppInfo, type AppLeftover, type TrashReport } from "../api";
 import { AppIcon } from "../components/ui";
@@ -17,19 +17,32 @@ export function Uninstall() {
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState<Sort>("size");
   const [selected, setSelected] = useState<string | null>(null);
-  // Last uninstall result: kept here so it survives the list reloading after every attempt.
-  const [result, setResult] = useState<{ name: string; report: TrashReport } | null>(null);
+  // Last uninstall result, shown in the right panel once the app is gone from the list.
+  const [result, setResult] = useState<{ app: AppInfo; report: TrashReport } | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
 
-  const load = async () => {
-    setApps(null);
-    setReading("");
+  /** First load shows the reading screen; later refreshes keep the list on screen. */
+  const load = async (silent = false) => {
+    if (silent) setRefreshing(true);
+    else { setApps(null); setReading(""); }
     try {
-      const list = await api.listApps((e) => e.kind === "path" && setReading(e.path));
+      const list = await api.listApps((e) => !silent && e.kind === "path" && setReading(e.path));
       setApps(list);
       setSelected((s) => (s && list.some((a) => a.path === s) ? s : null));
     } finally {
       setReading(null);
+      setRefreshing(false);
     }
+  };
+
+  const finished = (app: AppInfo, report: TrashReport) => {
+    setResult({ app, report });
+    // The bundle left: drop it from the list right away, then refresh in the background.
+    if (!report.failed.some((f) => f.path === app.path) && report.trashed > 0) {
+      setApps((list) => list?.filter((a) => a.path !== app.path) ?? null);
+      setSelected(null);
+    }
+    load(true);
   };
   useEffect(() => { load(); }, []);
 
@@ -59,7 +72,7 @@ export function Uninstall() {
 
   return (
     <div className="proc-layout">
-      <div className="table-wrap">
+      <div className="uninstall-main">
         <div className="uninstall-bar">
           <label className="search">
             <Search size={14} />
@@ -69,16 +82,12 @@ export function Uninstall() {
             <button className={sort === "size" ? "on" : ""} onClick={() => setSort("size")}>Dung lượng</button>
             <button className={sort === "unused" ? "on" : ""} onClick={() => setSort("unused")}>Lâu không dùng</button>
           </div>
-          <span className="uninstall-count">{apps.length} app · {fileBytes(total)}</span>
+          <span className="uninstall-count">
+            {refreshing && <RefreshCw size={12} className="spin" />}
+            {apps.length} app · {fileBytes(total)}
+          </span>
         </div>
-        {result && (
-          <div className={`uninstall-result banner ${result.report.failed.length ? "bad" : ""}`}>
-            <button className="icon-btn close" onClick={() => setResult(null)} title="Đóng"><X size={13} /></button>
-            Gỡ {result.name}: {result.report.trashed} mục vào Thùng rác · {fileBytes(result.report.bytes)}
-            {result.report.failed.length > 0 && " · chọn lại app để thử lại"}
-            {result.report.failed.map((f) => <div key={f.path} className="fail"><span>{tilde(f.path)}</span>{f.reason}</div>)}
-          </div>
-        )}
+        <div className="table-wrap">
         <table className="proc-table">
           <thead>
             <tr><th>Tên</th><th className="right">Dung lượng</th><th className="right">Dùng lần cuối</th></tr>
@@ -100,16 +109,22 @@ export function Uninstall() {
             ))}
           </tbody>
         </table>
+        </div>
       </div>
       {current
         ? <AppPanel key={current.path} app={current}
-            onDone={(report) => { if (report) setResult({ name: current.name, report }); load(); }} />
-        : <aside className="inspector uninstall-panel empty-panel">Chọn một app để xem nó chiếm bao nhiêu và gỡ cùng dữ liệu nó để lại.</aside>}
+            lastReport={result?.app.path === current.path ? result.report : null}
+            onFinished={(report) => finished(current, report)} onQuit={() => load(true)} />
+        : result
+          ? <ResultPanel app={result.app} report={result.report} onClose={() => setResult(null)} />
+          : <aside className="inspector uninstall-panel empty-panel">Chọn một app để xem nó chiếm bao nhiêu và gỡ cùng dữ liệu nó để lại.</aside>}
     </div>
   );
 }
 
-function AppPanel({ app, onDone }: { app: AppInfo; onDone: (report?: TrashReport) => void }) {
+function AppPanel({ app, lastReport, onFinished, onQuit }: {
+  app: AppInfo; lastReport: TrashReport | null; onFinished: (r: TrashReport) => void; onQuit: () => void;
+}) {
   const [leftovers, setLeftovers] = useState<AppLeftover[] | null>(null);
   const [checked, setChecked] = useState<Set<string>>(new Set());
   const [confirming, setConfirming] = useState(false);
@@ -133,17 +148,27 @@ function AppPanel({ app, onDone }: { app: AppInfo; onDone: (report?: TrashReport
     setConfirming(false);
     setBusy(true);
     try {
-      // Always reload afterwards: even a partial result changes what is installed.
-      onDone(await api.uninstallApp(app.path, [...checked]));
+      onFinished(await api.uninstallApp(app.path, [...checked]));
     } catch (e) {
-      onDone({ trashed: 0, bytes: 0, failed: [{ path: app.path, reason: String(e) }] });
+      onFinished({ trashed: 0, bytes: 0, failed: [{ path: app.path, reason: String(e) }] });
     } finally {
       setBusy(false);
     }
   };
 
   return (
-    <aside className="inspector uninstall-panel">
+    <aside className={`inspector uninstall-panel ${busy ? "is-busy" : ""}`}>
+      {busy && (
+        <div className="panel-busy" role="status">
+          <RefreshCw size={22} className="spin" />
+          <div className="busy-title">Đang gỡ {app.name}…</div>
+          <div className="busy-sub">
+            Chuyển {checked.size} mục ({fileBytes(freed)}) vào Thùng rác
+            {needsAdmin && <><br />Finder sẽ hỏi mật khẩu admin</>}
+          </div>
+          <div className="scan-track"><div style={{ width: "100%" }} /></div>
+        </div>
+      )}
       <header>
         <AppIcon name={app.name} icon={iconOf(app.path)} size={44} />
         <div>
@@ -172,8 +197,9 @@ function AppPanel({ app, onDone }: { app: AppInfo; onDone: (report?: TrashReport
         ))}
       </ul>
 
+      {lastReport && lastReport.failed.length > 0 && <ReportBox report={lastReport} />}
       {app.running ? (
-        <button className="btn wide" onClick={() => api.quitApp(app.bundleId).then(() => setTimeout(() => onDone(), 1500))}>
+        <button className="btn wide" onClick={() => api.quitApp(app.bundleId).then(() => setTimeout(onQuit, 1500))}>
           <Power size={14} /> Thoát {app.name} trước khi gỡ
         </button>
       ) : confirming ? (
@@ -190,6 +216,30 @@ function AppPanel({ app, onDone }: { app: AppInfo; onDone: (report?: TrashReport
         Mọi thứ vào Thùng rác, khôi phục được{needsAdmin ? " · macOS sẽ hỏi mật khẩu admin cho mục có ổ khoá" : ""}
       </div>
     </aside>
+  );
+}
+
+/** Shown after the app left the list: what went to the Trash and what did not. */
+function ResultPanel({ app, report, onClose }: { app: AppInfo; report: TrashReport; onClose: () => void }) {
+  const ok = report.failed.length === 0;
+  return (
+    <aside className="inspector uninstall-panel result-panel">
+      <div className={`result-icon ${ok ? "ok" : "bad"}`}>{ok ? <CheckCircle2 size={44} /> : <XCircle size={44} />}</div>
+      <div className="insp-name">{ok ? `Đã gỡ ${app.name}` : `Gỡ ${app.name} chưa trọn vẹn`}</div>
+      <div className="big-row"><span className="big-value">{fileBytesParts(report.bytes)[0]}</span><span className="big-unit">{fileBytesParts(report.bytes)[1]}</span></div>
+      <div className="insp-sub">{report.trashed} mục đã vào Thùng rác · khôi phục được bằng "Put Back"</div>
+      {!ok && <ReportBox report={report} />}
+      <button className="btn wide" onClick={onClose}>Xong</button>
+    </aside>
+  );
+}
+
+function ReportBox({ report }: { report: TrashReport }) {
+  return (
+    <div className="uninstall-result bad">
+      {report.failed.length} mục chưa gỡ được
+      {report.failed.map((f) => <div key={f.path} className="fail"><span>{tilde(f.path)}</span>{f.reason}</div>)}
+    </div>
   );
 }
 
