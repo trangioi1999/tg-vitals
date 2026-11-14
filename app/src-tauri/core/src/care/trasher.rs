@@ -31,6 +31,11 @@ pub fn trash(paths: &[String], allowed: &HashMap<String, u64>, home: &Path) -> T
     report
 }
 
+/// Paths of a request that actually went to the Trash (everything not reported as failed).
+pub fn trashed_paths(requested: &[String], report: &TrashReport) -> Vec<String> {
+    requested.iter().filter(|p| !report.failed.iter().any(|f| &f.path == *p)).cloned().collect()
+}
+
 /// App uninstaller: like [`trash`], but items the user does not own (root-owned apps such as
 /// Microsoft Office, `/Library/LaunchDaemons/...`) go to the Trash through Finder, which asks for
 /// the admin password. `NSWorkspace.recycleURLs` was tried and fails without asking (spike,
@@ -283,5 +288,11 @@ mod tests {
         assert_eq!(report.trashed, 0);
         assert!(app.exists() && data.exists(), "nothing may move when the prompt is cancelled");
         assert!(report.failed.iter().all(|f| f.reason == "Đã huỷ"), "{:?}", report.failed);
+    }
+
+    #[test]
+    fn trashed_paths_are_requested_minus_failed() {
+        let report = TrashReport { trashed: 1, bytes: 5, failed: vec![TrashFailure { path: "/b".into(), reason: "x".into() }] };
+        assert_eq!(trashed_paths(&["/a".into(), "/b".into()], &report), ["/a"]);
     }
 }

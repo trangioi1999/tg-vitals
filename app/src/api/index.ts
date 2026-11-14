@@ -22,7 +22,8 @@ export const api = {
   },
 
   trash: (paths: string[]): Promise<TrashReport> =>
-    isTauri ? call("trash_paths", { paths }) : Promise.resolve({ trashed: paths.length, bytes: 0, failed: [] }),
+    isTauri ? call("trash_paths", { paths })
+      : new Promise((r) => setTimeout(() => r({ trashed: paths.length, bytes: 0, failed: [] }), 900)),
 
   /** Installed apps, biggest first; `onEvent` gets each app path as it is read. */
   listApps: async (onEvent: (e: ScanEvent) => void): Promise<AppInfo[]> => {

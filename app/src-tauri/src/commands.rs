@@ -70,11 +70,15 @@ pub async fn scan_cleanup(on_event: Channel<ScanEvent>, state: State<'_, AppStat
 #[tauri::command]
 pub async fn trash_paths(paths: Vec<String>, state: State<'_, AppState>) -> Result<TrashReport, String> {
     let allowed = state.scanned.lock().unwrap().clone();
+    let requested = paths.clone();
     let report = tauri::async_runtime::spawn_blocking(move || trasher::trash(&paths, &allowed, &home()))
         .await
         .map_err(|e| e.to_string())?;
-    // Everything is stale after a clean; force a new scan before the next one.
-    state.scanned.lock().unwrap().clear();
+    // Only what went to the Trash leaves the allowlist: the rest of the scan stays cleanable.
+    let mut scanned = state.scanned.lock().unwrap();
+    for p in trasher::trashed_paths(&requested, &report) {
+        scanned.remove(&p);
+    }
     Ok(report)
 }
 

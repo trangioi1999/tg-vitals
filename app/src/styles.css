@@ -419,6 +419,11 @@ button:not(:disabled) { cursor:pointer; }
 .busy-title { font-size:15px; font-weight:700; }
 .busy-sub { color:var(--muted); font-size:12px; line-height:1.5; }
 .panel-busy .scan-track { width:80%; }
+.groups { position:relative; }
+.groups.is-busy > :not(.groups-busy) { filter:blur(1.5px); opacity:.35; pointer-events:none; transition:opacity .2s; }
+.groups-busy { position:absolute; inset:0; z-index:2; }
+.busy-card { position:sticky; top:140px; margin:40px auto 0; width:min(360px,90%); display:flex; flex-direction:column; align-items:center; gap:8px; padding:20px; text-align:center; border-radius:14px; background:linear-gradient(155deg,#34373f,#1d2026); border:1px solid #ffffff1c; box-shadow:0 10px 30px #0008; }
+.busy-card .spin { color:#5ac8fa; }
 .result-panel { align-items:center; text-align:center; justify-content:center; }
 .result-icon.ok { color:#32d74b; } .result-icon.bad { color:#ff9f0a; }
 .result-panel .uninstall-result { align-self:stretch; text-align:left; }
