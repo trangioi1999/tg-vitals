@@ -66,6 +66,7 @@ export function Cleanup() {
     setBusy(true);
     setScanning(true);
     setReport(null);
+    setConfirming(false);
     setGroups(null);
     setLog([]);
     setFound(0);
@@ -96,7 +97,21 @@ export function Cleanup() {
     paths.forEach((p) => (allOn ? next.delete(p) : next.add(p)));
     setSelected(next);
     setReport(null);
+    setConfirming(false);
   };
+  const toggleItem = (path: string) => {
+    setSelected((s) => toggleIn(s, path));
+    setReport(null);
+    setConfirming(false);
+  };
+
+  // Escape backs out of the confirm step.
+  useEffect(() => {
+    if (!confirming) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setConfirming(false); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [confirming]);
 
   const clean = async () => {
     const paths = [...selected];
@@ -127,7 +142,7 @@ export function Cleanup() {
             <>
               <div className="big-label">Đang dọn…</div>
               <div className="big-row"><span className="big-value">{fileBytesParts(cleaning.bytes)[0]}</span><span className="big-unit">{fileBytesParts(cleaning.bytes)[1]}</span></div>
-              <div className="scan-track"><div style={{ width: "100%" }} /></div>
+              <div className="scan-track indeterminate" role="progressbar" aria-label="Đang dọn"><div /></div>
             </>
           ) : report ? (
             <>
@@ -143,7 +158,7 @@ export function Cleanup() {
             <>
               <div className="big-label">Đang quét <span className="live-status scan-live"><i />{percent}%</span></div>
               <div className="big-row"><span className="big-value">{fileBytesParts(found)[0]}</span><span className="big-unit">{fileBytesParts(found)[1]} tìm thấy</span></div>
-              <div className="scan-track"><div style={{ width: `${percent}%` }} /></div>
+              <div className="scan-track" role="progressbar" aria-label="Tiến độ quét" aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent}><div style={{ width: `${percent}%` }} /></div>
             </>
             ) : (
             <>
@@ -162,7 +177,10 @@ export function Cleanup() {
           <button className="btn" onClick={scan} disabled={busy}>{groups ? "Quét lại" : "Quét"}</button>
           {groups && (
             confirming ? (
-              <button className="btn primary" onClick={clean}>Xác nhận dọn {fileBytes(selectedBytes)}</button>
+              <>
+                <button className="btn" onClick={() => setConfirming(false)}>Huỷ</button>
+                <button className="btn primary" onClick={clean} autoFocus>Xác nhận dọn {fileBytes(selectedBytes)}</button>
+              </>
             ) : (
               <button className="btn primary" disabled={!selectedBytes || busy} onClick={() => setConfirming(true)}>Dọn dẹp</button>
             )
@@ -193,7 +211,7 @@ export function Cleanup() {
         </ul>
       )}
 
-      {groups && groups.length === 0 && <div className="empty">Không tìm thấy gì để dọn 🎉</div>}
+      {groups && groups.length === 0 && <div className="empty">Không tìm thấy gì để dọn</div>}
 
       <div className={`groups ${cleaning ? "is-busy" : ""}`}>
         {cleaning && (
@@ -213,29 +231,31 @@ export function Cleanup() {
           return (
             <section key={g.id} className="group">
               <div className="group-row">
-                <button className={`check ${on === paths.length ? "on" : on ? "some" : ""}`} onClick={() => toggleGroup(g)}>
+                <button className={`check ${on === paths.length ? "on" : on ? "some" : ""}`} onClick={() => toggleGroup(g)}
+                  role="checkbox" aria-checked={on === paths.length ? true : on ? "mixed" : false} aria-label={`Chọn tất cả: ${g.title}`}>
                   {on > 0 && <Check size={12} strokeWidth={3} />}
                 </button>
                 <IconTile icon={style.icon} color={style.color} size={32} />
-                <div className="group-text" onClick={() => setOpen((o) => toggleIn(o, g.id))}>
-                  <div className="group-title">{g.title}{!g.safe && <span className="tag">xem trước khi dọn</span>}</div>
-                  <div className="group-note">{g.note}</div>
-                </div>
+                <button type="button" className="group-text" onClick={() => setOpen((o) => toggleIn(o, g.id))} aria-expanded={isOpen} aria-controls={`items-${g.id}`}>
+                  <span className="group-title">{g.title}{!g.safe && <span className="tag">xem trước khi dọn</span>}</span>
+                  <span className="group-note">{g.note}</span>
+                </button>
                 <div className="group-size">{fileBytes(total(g))}</div>
-                <button className="icon-btn" onClick={() => setOpen((o) => toggleIn(o, g.id))}>
+                <button className="icon-btn" onClick={() => setOpen((o) => toggleIn(o, g.id))}
+                  aria-label={`${isOpen ? "Thu gọn" : "Mở rộng"} ${g.title}`} aria-expanded={isOpen} aria-controls={`items-${g.id}`}>
                   <ChevronRight size={16} style={{ transform: isOpen ? "rotate(90deg)" : undefined, transition: "transform .15s" }} />
                 </button>
               </div>
               {isOpen && (
-                <ul className="items">
+                <ul className="items" id={`items-${g.id}`}>
                   {g.items.map((i) => (
                     <li key={i.path}>
-                      <button className={`check small ${selected.has(i.path) ? "on" : ""}`}
-                        onClick={() => { setSelected((s) => toggleIn(s, i.path)); setReport(null); }}>
+                      <button className={`check small ${selected.has(i.path) ? "on" : ""}`} onClick={() => toggleItem(i.path)}
+                        role="checkbox" aria-checked={selected.has(i.path)} aria-label={`Chọn ${i.name}`}>
                         {selected.has(i.path) && <Check size={10} strokeWidth={3} />}
                       </button>
                       <span className="item-name">{i.name}</span>
-                      <span className="item-path">{g.id === "project-artifacts" && i.modified ? `sửa lần cuối ${ago(i.modified)}` : tilde(i.path)}</span>
+                      <span className="item-path" title={i.path}>{g.id === "project-artifacts" && i.modified ? `${tilde(i.path)} · sửa ${ago(i.modified)}` : tilde(i.path)}</span>
                       <span className="item-size">{fileBytes(i.size)}</span>
                     </li>
                   ))}

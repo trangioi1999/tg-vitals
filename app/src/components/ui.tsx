@@ -1,6 +1,6 @@
 import type { LucideIcon } from "lucide-react";
 import { ChevronRight } from "lucide-react";
-import type { CSSProperties, ReactNode } from "react";
+import type { CSSProperties, KeyboardEvent, ReactNode } from "react";
 
 /** Apple system colours, used as the accent for each metric. */
 export const ACCENT = {
@@ -39,11 +39,13 @@ export function Card({
 }) {
   return (
     <section className={`card ${className}`} style={style}>
-      <header className="card-head" onClick={onOpen} role={onOpen ? "button" : undefined} tabIndex={onOpen ? 0 : undefined} onKeyDown={onOpen ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpen(); } } : undefined}>
+      <header className={`card-head ${onOpen ? "openable" : ""}`}>
         <IconTile icon={icon} color={color} />
-        <h3 style={{ color }}>{title}</h3>
+        <h3 style={{ color }}>
+          {onOpen ? <button type="button" className="card-open" onClick={onOpen}>{title}</button> : title}
+        </h3>
         <span className="card-right">{right}</span>
-        {onOpen && <ChevronRight size={16} className="chev" />}
+        {onOpen && <ChevronRight size={16} className="chev" aria-hidden="true" />}
       </header>
       {children}
     </section>
@@ -75,6 +77,37 @@ export function Stats({ items }: { items: [string, ReactNode][] }) {
     </div>
   );
 }
+
+/**
+ * Keyboard handler for a selectable table body: ArrowUp/ArrowDown move the selection (and focus),
+ * Enter/Space select the focused row. Rows carry `data-row-id`.
+ */
+export function tableKeys<T extends string | number>(ids: T[], current: T | null, select: (id: T) => void) {
+  return (e: KeyboardEvent<HTMLTableSectionElement>) => {
+    const row = (e.target as HTMLElement).closest<HTMLElement>("tr[data-row-id]");
+    if (!row || !ids.length) return;
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      const id = ids.find((x) => String(x) === row.dataset.rowId);
+      if (id !== undefined) select(id);
+      return;
+    }
+    if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+    e.preventDefault();
+    const from = ids.findIndex((x) => String(x) === row.dataset.rowId);
+    const at = from < 0 ? ids.findIndex((x) => x === current) : from;
+    const next = ids[Math.max(0, Math.min(ids.length - 1, at + (e.key === "ArrowDown" ? 1 : -1)))];
+    select(next);
+    const body = e.currentTarget;
+    requestAnimationFrame(() => {
+      body.querySelector<HTMLElement>(`tr[data-row-id="${CSS.escape(String(next))}"]`)?.focus();
+    });
+  };
+}
+
+/** Roving tabindex: only the selected row (or the first one when nothing is selected) is in the Tab order. */
+export const rowTabIndex = <T,>(id: T, index: number, current: T | null, ids: T[]) =>
+  id === current || (index === 0 && (current === null || !ids.includes(current))) ? 0 : -1;
 
 /** Coloured letter tile used when a process has no bundle icon. */
 export function AppIcon({ name, icon, size = 18 }: { name: string; icon: string | null; size?: number }) {

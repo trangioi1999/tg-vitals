@@ -3,12 +3,14 @@ interface Slice {
   color: string;
 }
 
-export function Donut({ slices, size = 120, stroke = 14, center, sub }: {
+export function Donut({ slices, size = 120, stroke = 14, center, sub, label }: {
   slices: Slice[];
   size?: number;
   stroke?: number;
   center: string;
   sub: string;
+  /** Accessible description; defaults to the centre text. */
+  label?: string;
 }) {
   const total = slices.reduce((s, x) => s + x.value, 0) || 1;
   const r = (size - stroke) / 2;
@@ -17,8 +19,8 @@ export function Donut({ slices, size = 120, stroke = 14, center, sub }: {
   let offset = 0;
 
   return (
-    <div className="donut" style={{ width: size, height: size }}>
-      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+    <div className="donut" style={{ width: size, height: size }} role="img" aria-label={label ?? `${center} ${sub}`}>
+      <svg aria-hidden="true" width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
         {slices.map((s, i) => {
           const len = Math.max(0, (s.value / total) * c - gap);
           const el = (
@@ -35,7 +37,7 @@ export function Donut({ slices, size = 120, stroke = 14, center, sub }: {
           return el;
         })}
       </svg>
-      <div className="donut-center">
+      <div className="donut-center" aria-hidden="true">
         <div className="donut-value">{center}</div>
         <div className="donut-sub">{sub}</div>
       </div>

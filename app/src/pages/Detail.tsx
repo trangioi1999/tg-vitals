@@ -1,4 +1,4 @@
-import { Cpu, HardDrive, MemoryStick, Wifi, Zap } from "lucide-react";
+import { Battery, Cpu, HardDrive, MemoryStick, Wifi, Zap } from "lucide-react";
 import type { Snapshot } from "../api";
 import { DotChart } from "../components/DotChart";
 import { ACCENT, AppIcon, BigNumber, Card, Stats, dimOf } from "../components/ui";
@@ -14,34 +14,34 @@ export function Detail({ page, s, h }: { page: MetricPage; s: Snapshot; h: Histo
 
   const config = {
     cpu: {
-      title: "CPU", icon: Cpu, color: ACCENT.cpu, big: [(s.cpu.total * 100).toFixed(0), "%"],
-      stats: [["User", pct(s.cpu.user)], ["System", pct(s.cpu.system)], ["Nhiệt độ", s.cpu.temperature ? `${s.cpu.temperature.toFixed(0)} °C` : "—"], ["Số core", String(s.cpu.perCore.length)]],
+      title: "CPU", topTitle: "App dùng nhiều nhất", icon: Cpu, color: ACCENT.cpu, big: [(s.cpu.total * 100).toFixed(0), "%"],
+      stats: [["User", pct(s.cpu.user)], ["System", pct(s.cpu.system)], ["Nhiệt độ", s.cpu.temperature != null ? `${s.cpu.temperature.toFixed(0)} °C` : "—"], ["Số core", String(s.cpu.perCore.length)]],
       series: [{ values: h.cpuSystem, color: ACCENT.gpu }, { values: h.cpuUser, color: ACCENT.cpu }], max: 1,
       top: [...s.processes].sort((a, b) => b.cpu - a.cpu).map((p) => [p, `${p.cpu.toFixed(1)}%`, p.cpu] as const),
     },
     memory: {
-      title: "Bộ nhớ", icon: MemoryStick, color: ACCENT.memory, big: bytes(used).split(" "),
+      title: "Bộ nhớ", topTitle: "App dùng nhiều nhất", icon: MemoryStick, color: ACCENT.memory, big: bytes(used).split(" "),
       stats: [["App", bytes(m.app)], ["Wired", bytes(m.wired)], ["Nén", bytes(m.compressed)], ["Swap", bytes(m.swapUsed)]],
       series: [{ values: h.memory, color: ACCENT.memory }], max: 1,
       top: [...s.processes].sort((a, b) => b.memory - a.memory).map((p) => [p, bytes(p.memory), p.memory] as const),
     },
     disk: {
-      title: "Ổ đĩa", icon: HardDrive, color: ACCENT.disk, big: fileBytes(s.disk.free).split(" "),
-      stats: [["Đọc", rate(s.disk.readPerSec)], ["Ghi", rate(s.disk.writePerSec)], ["Dung lượng", fileBytes(s.disk.total)], ["Đã dùng", pct(1 - s.disk.free / s.disk.total)]],
+      title: "Ổ đĩa", topTitle: "App dùng nhiều nhất", icon: HardDrive, color: ACCENT.disk, big: fileBytes(s.disk.free).split(" "),
+      stats: [["Đọc", rate(s.disk.readPerSec)], ["Ghi", rate(s.disk.writePerSec)], ["Dung lượng", fileBytes(s.disk.total)], ["Đã dùng", s.disk.total > 0 ? pct(Math.max(0, Math.min(1, 1 - s.disk.free / s.disk.total))) : "—"]],
       series: [{ values: h.diskWrite, color: ACCENT.network }, { values: h.diskRead, color: ACCENT.disk }], max: undefined,
       top: [...s.processes].sort((a, b) => b.diskWritten - a.diskWritten).map((p) => [p, bytes(p.diskWritten), p.diskWritten] as const),
     },
     network: {
-      title: "Mạng", icon: Wifi, color: ACCENT.network, big: rate(s.network.inPerSec).split(" "),
-      stats: [["Tải lên", rate(s.network.outPerSec)], ["Đã nhận", bytes(s.network.totalIn)], ["Đã gửi", bytes(s.network.totalOut)], ["Kết nối", "—"]],
+      title: "Mạng", topTitle: "App dùng nhiều nhất", icon: Wifi, color: ACCENT.network, big: rate(s.network.inPerSec).split(" "),
+      stats: [["Tải lên", rate(s.network.outPerSec)], ["Đã nhận", bytes(s.network.totalIn)], ["Đã gửi", bytes(s.network.totalOut)]],
       series: [{ values: h.netOut, color: ACCENT.cpu }, { values: h.netIn, color: ACCENT.network }], max: undefined,
       top: [] as (readonly [Snapshot["processes"][number], string, number])[],
     },
     energy: {
-      title: "Năng lượng", icon: Zap, color: ACCENT.energy, big: [(s.battery?.powerDraw ?? 0).toFixed(1), "W"],
-      stats: [["Pin", s.battery ? pct(s.battery.percent) : "—"], ["Độ bền", s.battery ? pct(s.battery.health) : "—"], ["Chu kỳ", s.battery ? String(s.battery.cycles) : "—"], ["Sạc", s.battery?.onAdapter ? "Đang cắm" : "Không"]],
+      title: "Năng lượng", topTitle: "Tác động năng lượng (theo CPU)", icon: Zap, color: ACCENT.energy, big: [(s.battery?.powerDraw ?? 0).toFixed(1), "W"],
+      stats: [["Pin", s.battery ? pct(s.battery.percent) : "—"], ["Độ bền", s.battery ? pct(s.battery.health) : "—"], ["Chu kỳ", s.battery ? String(s.battery.cycles) : "—"], ["Trạng thái", s.battery ? (s.battery.charging ? "Đang sạc" : s.battery.onAdapter ? "Đã cắm" : "Dùng pin") : "—"]],
       series: [{ values: h.power, color: ACCENT.energy }], max: undefined,
-      top: [...s.processes].sort((a, b) => b.cpu - a.cpu).map((p) => [p, `${(p.cpu * 0.08).toFixed(2)} W`, p.cpu] as const),
+      top: [...s.processes].sort((a, b) => b.cpu - a.cpu).map((p) => [p, `${p.cpu.toFixed(1)}% CPU`, p.cpu] as const),
     },
   }[page];
 
@@ -50,11 +50,15 @@ export function Detail({ page, s, h }: { page: MetricPage; s: Snapshot; h: Histo
   return (
     <div className="detail">
       <Card title={config.title} icon={config.icon} color={config.color} className="detail-main">
-        <div className="detail-head">
-          <BigNumber label="Hiện tại" value={config.big[0]} unit={config.big.slice(1).join(" ")} />
-          <Stats items={config.stats as [string, string][]} />
-        </div>
-        <DotChart dim={dimOf(config.color)} series={config.series} max={config.max} rows={10} height={150} pitch={8} />
+        {page === "energy" && !s.battery ? (
+          <div className="no-battery"><Battery size={28} /><b>Không có dữ liệu pin</b><span>Máy bàn hoặc cảm biến chưa khả dụng</span></div>
+        ) : <>
+          <div className="detail-head">
+            <BigNumber label="Hiện tại" value={config.big[0]} unit={config.big.slice(1).join(" ")} />
+            <Stats items={config.stats as [string, string][]} />
+          </div>
+          <DotChart dim={dimOf(config.color)} series={config.series} max={config.max} rows={10} height={150} pitch={8} label={`${config.title} theo thời gian`} />
+        </>}
       </Card>
 
       {page === "cpu" && (
@@ -62,8 +66,8 @@ export function Detail({ page, s, h }: { page: MetricPage; s: Snapshot; h: Histo
           <div className="cores">
             {s.cpu.perCore.map((v, i) => (
               <div key={i} className="core">
-                <div className="core-bar"><div style={{ height: pct(v), background: i < s.cpu.pCores ? ACCENT.cpu : ACCENT.network }} /></div>
-                <span>{i < s.cpu.pCores ? "P" : "E"}{i + 1}</span>
+                <div className="core-bar"><div style={{ height: pct(v), background: s.cpu.pCores === 0 || i < s.cpu.pCores ? ACCENT.cpu : ACCENT.network }} /></div>
+                <span>{coreLabel(i, s.cpu.pCores)}</span>
               </div>
             ))}
           </div>
@@ -71,7 +75,7 @@ export function Detail({ page, s, h }: { page: MetricPage; s: Snapshot; h: Histo
       )}
 
       {config.top.length > 0 && (
-        <Card title="App dùng nhiều nhất" icon={config.icon} color={config.color}>
+        <Card title={config.topTitle} icon={config.icon} color={config.color}>
           <ul className="bar-list">
             {config.top.slice(0, 8).map(([p, label, v]) => (
               <li key={p.pid}>
@@ -89,3 +93,7 @@ export function Detail({ page, s, h }: { page: MetricPage; s: Snapshot; h: Histo
     </div>
   );
 }
+
+/** Intel has no P/E split (pCores 0): C1…Cn. Apple silicon: P-cores first, then E-cores, each numbered from 1. */
+const coreLabel = (i: number, pCores: number) =>
+  pCores === 0 ? `C${i + 1}` : i < pCores ? `P${i + 1}` : `E${i - pCores + 1}`;
