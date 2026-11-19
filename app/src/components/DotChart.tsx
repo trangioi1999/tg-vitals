@@ -16,10 +16,12 @@ interface Props {
   dim: string;
   /** Horizontal distance between dot centres, in CSS px. */
   pitch?: number;
+  /** Accessible description of what the chart shows. */
+  label?: string;
 }
 
 /** LED-style dot matrix: one column per sample, newest on the right. */
-export function DotChart({ series, max, rows = 5, height = 44, dim, pitch = 6.5 }: Props) {
+export function DotChart({ series, max, rows = 5, height = 44, dim, pitch = 6.5, label = "Biểu đồ theo thời gian" }: Props) {
   const ref = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
@@ -74,5 +76,5 @@ export function DotChart({ series, max, rows = 5, height = 44, dim, pitch = 6.5 
     return () => observer.disconnect();
   }, [series, max, rows, height, dim, pitch]);
 
-  return <canvas ref={ref} className="dot-chart" style={{ height }} />;
+  return <canvas ref={ref} className="dot-chart" style={{ height }} role="img" aria-label={label} />;
 }
