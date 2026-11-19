@@ -10,3 +10,4 @@ Package.resolved
 push-to-github.command
 .superpowers/
 .playwright-mcp/
+.claude/skills/
