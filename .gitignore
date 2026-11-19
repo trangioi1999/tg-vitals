@@ -11,3 +11,4 @@ push-to-github.command
 .superpowers/
 .playwright-mcp/
 .claude/skills/
+.claude/worktrees/
