@@ -1,4 +1,5 @@
 //! Portable, read-only matching and discovery of an app's leftover data.
+use super::app_inventory::{is_apple_id, is_offerable};
 use super::scanner;
 use serde::Serialize;
 use std::{fs, path::{Path, PathBuf}};
@@ -23,6 +24,10 @@ pub enum Location {
 
 /// `others` contains the apps that will remain installed.
 pub fn matches_leftover(app: &AppIdentity, others: &[AppIdentity], location: Location, entry: &str) -> bool {
+    // Never Apple's data, whatever the app claims to be; and only full ids drive prefix matching.
+    if !is_offerable(&app.bundle_id) || is_apple_id(entry) {
+        return false;
+    }
     let id = app.bundle_id.to_lowercase();
     // Another installed copy with the same bundle id shares all of this data.
     if others.iter().any(|o| o.bundle_id.to_lowercase() == id) {
@@ -217,20 +222,38 @@ mod tests {
 
     #[test]
     fn plist_and_saved_state_and_launch_plists() {
-        let foo = app("com.foo", "Foo", None);
+        let foo = app("com.foo.app", "Foo", None);
         for (location, yes, no) in [
-            (Location::PlistById, "COM.FOO.PLIST", "com.foobar.plist"),
-            (Location::SavedState, "com.foo.savedState", "com.foobar.savedState"),
-            (Location::ByHost, "com.foo.ABC-123.plist", "com.foobar.ABC.plist"),
-            (Location::LaunchPlist, "com.foo.helper.plist", "org.foo.helper.plist"),
+            (Location::PlistById, "COM.FOO.APP.PLIST", "com.foo.appbar.plist"),
+            (Location::SavedState, "com.foo.app.savedState", "com.foo.appbar.savedState"),
+            (Location::ByHost, "com.foo.app.ABC-123.plist", "com.foo.appbar.ABC.plist"),
+            (Location::LaunchPlist, "com.foo.app.helper.plist", "org.foo.helper.plist"),
         ] {
             assert!(matches_leftover(&foo, &[], location, yes));
             assert!(!matches_leftover(&foo, &[], location, no));
-            assert!(!matches_leftover(&foo, &[], location, "com.foo.helper.txt"));
+            assert!(!matches_leftover(&foo, &[], location, "com.foo.app.helper.txt"));
         }
         // A different app whose id merely starts with ours is not ours.
-        assert!(!matches_leftover(&foo, &[], Location::LaunchPlist, "com.foobar.plist"));
-        assert!(matches_leftover(&foo, &[], Location::LaunchPlist, "com.foo.plist"));
+        assert!(!matches_leftover(&foo, &[], Location::LaunchPlist, "com.foo.appbar.plist"));
+        assert!(matches_leftover(&foo, &[], Location::LaunchPlist, "com.foo.app.plist"));
+    }
+
+    #[test]
+    fn never_matches_apple_entries() {
+        let entries = ["com.apple.something.plist", "com.apple.Safari", "COM.APPLE.Safari.plist", "com.apple"];
+        let locations = [Location::ById, Location::ByIdOrName, Location::GroupContainers, Location::PlistById,
+            Location::SavedState, Location::ByHost, Location::LaunchPlist];
+        for id in ["com.apple", "com", "Com.Apple", "com.apple.Safari"] {
+            let crafted = app(id, "Safari", Some("com"));
+            for location in locations {
+                for entry in entries {
+                    assert!(!matches_leftover(&crafted, &[], location, entry), "{id} {entry}");
+                }
+            }
+        }
+        // Even an ordinary app never claims an Apple entry by name.
+        let x = app("com.x.app", "com.apple.Safari", None);
+        assert!(!matches_leftover(&x, &[], Location::ByIdOrName, "com.apple.Safari"));
     }
 
     #[test]
@@ -278,18 +301,18 @@ mod tests {
     #[test]
     fn find_leftovers_walks_roots() {
         let home = temp_dir();
-        let small = home.join("user/com.foo");
-        let big = home.join("admin/com.foo.helper.plist");
+        let small = home.join("user/com.foo.app");
+        let big = home.join("admin/com.foo.app.helper.plist");
         write(&small.join("data"), 4_096);
         write(&big, 131_072);
-        write(&home.join("user/com.foobar/data"), 200_000);
+        write(&home.join("user/com.foo.appbar/data"), 200_000);
         write(&home.join("admin/org.other.plist"), 200_000);
         let roots = [
             LeftoverRoot { dir: home.join("user"), location: Location::ById, needs_admin: false },
             LeftoverRoot { dir: home.join("admin"), location: Location::LaunchPlist, needs_admin: true },
             LeftoverRoot { dir: home.join("missing"), location: Location::ById, needs_admin: false },
         ];
-        let found = find_leftovers(&app("com.foo", "Foo", None), &[], &roots);
+        let found = find_leftovers(&app("com.foo.app", "Foo", None), &[], &roots);
         assert_eq!(found.len(), 2);
         for (item, path, admin) in [(&found[0], big, true), (&found[1], small, false)] {
             assert_eq!(item.path, path.to_string_lossy());
@@ -307,12 +330,12 @@ mod tests {
     fn unreadable_entry_has_no_size() {
         use std::os::unix::fs::PermissionsExt;
         let home = temp_dir();
-        let locked = home.join("com.foo.locked");
+        let locked = home.join("com.foo.app.locked");
         fs::create_dir(&locked).unwrap();
-        write(&home.join("com.foo/data"), 4096);
+        write(&home.join("com.foo.app/data"), 4096);
         fs::set_permissions(&locked, fs::Permissions::from_mode(0o000)).unwrap();
         let denied = fs::read_dir(&locked).is_err();
-        let found = find_leftovers(&app("com.foo", "Foo", None), &[], &[LeftoverRoot {
+        let found = find_leftovers(&app("com.foo.app", "Foo", None), &[], &[LeftoverRoot {
             dir: home, location: Location::ById, needs_admin: false,
         }]);
         fs::set_permissions(&locked, fs::Permissions::from_mode(0o700)).unwrap();
