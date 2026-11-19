@@ -246,7 +246,7 @@ mod tests {
     #[test]
     fn receipts_never_include_apple_or_short_ids() {
         let pkgs = "com.apple.pkg.Core\nCOM.APPLE.pkg.X\ncom.vendor.app.pkg\n";
-        for id in ["com", "com.apple", "COM.APPLE.pkg", "com.vendor"] {
+        for id in ["com", "com.apple", "COM.APPLE.pkg", "com..vendor"] {
             assert!(receipts_to_forget(pkgs, id).is_empty(), "{id}");
         }
     }

@@ -30,13 +30,13 @@ impl AppInfo {
 }
 
 /// Apple's own apps and tg-vitals itself are never offered for removal. The id also drives leftover
-/// and receipt matching by prefix, so it must be a full reverse-DNS id (at least three non-empty
-/// components): a bare `com` or `com.apple` would otherwise claim every `com.apple.*` entry.
+/// and receipt matching by prefix, so it needs at least two non-empty components: a bare `com`
+/// would otherwise claim every `com.*` entry. Two-part ids are real (`notion.id`, `md.obsidian`).
 pub fn is_offerable(bundle_id: &str) -> bool {
     let id = bundle_id.to_ascii_lowercase();
     !is_apple_id(&id)
         && id != "com.trangioi.tgvitals"
-        && id.split('.').count() >= 3
+        && id.split('.').count() >= 2
         && id.split('.').all(|part| !part.is_empty())
 }
 
@@ -226,10 +226,11 @@ mod tests {
     #[test]
     fn offerable_rejects_apple_in_any_case_and_short_ids() {
         for id in ["com.apple", "COM.APPLE.Safari", "Com.Apple", "Com.Apple.x", "COM.TRANGIOI.TGVITALS",
-            "com", "com.foo", "com..foo", "com.foo.", ".com.foo"] {
+            "com", "com..foo", "com.foo.", ".com.foo"] {
             assert!(!is_offerable(id), "{id}");
         }
         assert!(is_offerable("com.applesauce.App"));
+        assert!(is_offerable("notion.id") && is_offerable("md.obsidian"));
     }
 
     #[test]
