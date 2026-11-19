@@ -66,7 +66,7 @@ export function Detail({ page, s, h }: { page: MetricPage; s: Snapshot; h: Histo
           <div className="cores">
             {s.cpu.perCore.map((v, i) => (
               <div key={i} className="core">
-                <div className="core-bar"><div style={{ height: pct(v), background: s.cpu.pCores === 0 || i < s.cpu.pCores ? ACCENT.cpu : ACCENT.network }} /></div>
+                <div className="core-bar"><div style={{ transform: `translateY(${(1 - Math.min(1, Math.max(0, v))) * 100}%)`, background: s.cpu.pCores === 0 || i < s.cpu.pCores ? ACCENT.cpu : ACCENT.network }} /></div>
                 <span>{coreLabel(i, s.cpu.pCores)}</span>
               </div>
             ))}

@@ -135,7 +135,7 @@ function Inspector({ p, h, onClose }: { p: ProcessRow; h: History; onClose: () =
         <DotChart dim={dimOf(ACCENT.memory)} series={[{ values: hist?.memory ?? [], color: ACCENT.memory }]} height={34} rows={4} pitch={5.5} />
       </div>
 
-      <div className="insp-title">CHI TIẾT</div>
+      <div className="insp-title">Chi tiết</div>
       <dl className="details">
         <dt>Thời gian CPU</dt><dd>{duration(p.cpuTime)}</dd>
         <dt>Luồng</dt><dd>{p.threads}</dd>
