@@ -29,9 +29,21 @@ impl AppInfo {
     }
 }
 
-/// Apple's own apps and tg-vitals itself are never offered for removal.
+/// Apple's own apps and tg-vitals itself are never offered for removal. The id also drives leftover
+/// and receipt matching by prefix, so it needs at least two non-empty components: a bare `com`
+/// would otherwise claim every `com.*` entry. Two-part ids are real (`notion.id`, `md.obsidian`).
 pub fn is_offerable(bundle_id: &str) -> bool {
-    !bundle_id.is_empty() && !bundle_id.starts_with("com.apple.") && bundle_id != "com.trangioi.tgvitals"
+    let id = bundle_id.to_ascii_lowercase();
+    !is_apple_id(&id)
+        && id != "com.trangioi.tgvitals"
+        && id.split('.').count() >= 2
+        && id.split('.').all(|part| !part.is_empty())
+}
+
+/// `com.apple` or anything under `com.apple.` (case-insensitive): never touched.
+pub fn is_apple_id(name: &str) -> bool {
+    let name = name.to_ascii_lowercase();
+    name == "com.apple" || name.starts_with("com.apple.")
 }
 
 /// `TeamIdentifier=XXXX` from `codesign -dv --verbose=2` (it prints to stderr).
@@ -208,6 +220,17 @@ mod tests {
         assert!(!is_offerable("com.trangioi.tgvitals"));
         assert!(!is_offerable(""));
         assert!(is_offerable("com.microsoft.Word"));
+        assert!(is_offerable("com.microsoft.Excel"));
+    }
+
+    #[test]
+    fn offerable_rejects_apple_in_any_case_and_short_ids() {
+        for id in ["com.apple", "COM.APPLE.Safari", "Com.Apple", "Com.Apple.x", "COM.TRANGIOI.TGVITALS",
+            "com", "com..foo", "com.foo.", ".com.foo"] {
+            assert!(!is_offerable(id), "{id}");
+        }
+        assert!(is_offerable("com.applesauce.App"));
+        assert!(is_offerable("notion.id") && is_offerable("md.obsidian"));
     }
 
     #[test]

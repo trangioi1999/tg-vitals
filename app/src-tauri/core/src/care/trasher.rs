@@ -143,15 +143,16 @@ fn finder_delete(_paths: &[String]) -> Result<(), String> {
 /// Installer receipts (`pkgutil --pkgs`) that belong to `bundle_id`: equal to it or starting with
 /// `bundle_id.`, and made only of characters a package id can contain (they reach a shell).
 pub fn receipts_to_forget(pkgs_output: &str, bundle_id: &str) -> Vec<String> {
-    let id = bundle_id.to_lowercase();
-    if id.is_empty() {
+    if !super::app_inventory::is_offerable(bundle_id) {
         return Vec::new();
     }
+    let id = bundle_id.to_lowercase();
     let safe = |p: &str| p.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_'));
     pkgs_output
         .lines()
         .map(str::trim)
-        .filter(|p| safe(p) && { let l = p.to_lowercase(); l == id || l.starts_with(&format!("{id}.")) })
+        .filter(|p| safe(p) && !super::app_inventory::is_apple_id(p)
+            && { let l = p.to_lowercase(); l == id || l.starts_with(&format!("{id}.")) })
         .map(str::to_owned)
         .collect()
 }
@@ -236,10 +237,18 @@ mod tests {
 
     #[test]
     fn receipts_to_forget_filters_and_validates() {
-        let pkgs = "com.apple.pkg.Core\ncom.paloaltonetworks.globalprotect.pkg\ncom.paloaltonetworks.gp.helper\ncom.paloaltonetworks; rm -rf ~\ncom.paloaltonetworksX.pkg\n";
-        assert_eq!(receipts_to_forget(pkgs, "com.paloaltonetworks"),
-            ["com.paloaltonetworks.globalprotect.pkg", "com.paloaltonetworks.gp.helper"]);
+        let pkgs = "com.apple.pkg.Core\ncom.paloaltonetworks.gp.pkg\ncom.paloaltonetworks.gp.helper\ncom.paloaltonetworks.gp; rm -rf ~\ncom.paloaltonetworks.gpX.pkg\n";
+        assert_eq!(receipts_to_forget(pkgs, "com.paloaltonetworks.gp"),
+            ["com.paloaltonetworks.gp.pkg", "com.paloaltonetworks.gp.helper"]);
         assert!(receipts_to_forget(pkgs, "").is_empty());
+    }
+
+    #[test]
+    fn receipts_never_include_apple_or_short_ids() {
+        let pkgs = "com.apple.pkg.Core\nCOM.APPLE.pkg.X\ncom.vendor.app.pkg\n";
+        for id in ["com", "com.apple", "COM.APPLE.pkg", "com..vendor"] {
+            assert!(receipts_to_forget(pkgs, id).is_empty(), "{id}");
+        }
     }
 
     #[test]
