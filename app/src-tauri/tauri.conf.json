@@ -24,7 +24,8 @@
         "titleBarStyle": "Overlay",
         "hiddenTitle": true,
         "trafficLightPosition": { "x": 20, "y": 20 },
-        "backgroundColor": "#1c1c1e"
+        "backgroundColor": "#191b20",
+        "theme": "Dark"
       },
       {
         "label": "tray",
@@ -40,7 +41,8 @@
         "transparent": true,
         "shadow": true,
         "focus": false,
-        "visibleOnAllWorkspaces": true
+        "visibleOnAllWorkspaces": true,
+        "theme": "Dark"
       }
     ],
     "security": {
