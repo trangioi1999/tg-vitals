@@ -1,7 +1,7 @@
 import { Check, CheckCircle2, Lock, Power, RefreshCw, Search, Terminal, XCircle } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { api, isTauri, type AppInfo, type AppLeftover, type TrashReport } from "../api";
-import { AppIcon } from "../components/ui";
+import { AppIcon, rowTabIndex, tableKeys } from "../components/ui";
 import { ago, fileBytes, fileBytesParts } from "../format";
 
 type Sort = "size" | "unused";
@@ -53,6 +53,7 @@ export function Uninstall() {
     return sort === "size" ? list : [...list].sort((a, b) => (a.lastUsed ?? 0) - (b.lastUsed ?? 0));
   }, [apps, search, sort]);
   const current = apps?.find((a) => a.path === selected) ?? null;
+  const ids = rows.map((a) => a.path);
   const total = (apps ?? []).reduce((s, a) => s + a.size, 0);
 
   if (!apps) {
@@ -63,7 +64,7 @@ export function Uninstall() {
           <div className="hero-text">
             <div className="big-label">Đang đọc app…</div>
             <div className="hero-sub mono">{reading ? tilde(reading) : "/Applications"}</div>
-            <div className="scan-track"><div style={{ width: "100%" }} /></div>
+            <div className="scan-track indeterminate" role="progressbar" aria-label="Đang đọc app"><div /></div>
           </div>
         </section>
       </div>
@@ -90,17 +91,26 @@ export function Uninstall() {
         <div className="table-wrap">
         <table className="proc-table">
           <thead>
-            <tr><th>Tên</th><th className="right">Dung lượng</th><th className="right">Dùng lần cuối</th></tr>
+            <tr>
+              <th>Tên</th>
+              <th className="right sortable" aria-sort={sort === "size" ? "descending" : "none"}>
+                <button type="button" className="th-sort" onClick={() => setSort("size")}>Dung lượng</button>
+              </th>
+              <th className="right sortable" aria-sort={sort === "unused" ? "ascending" : "none"}>
+                <button type="button" className="th-sort" onClick={() => setSort("unused")}>Dùng lần cuối</button>
+              </th>
+            </tr>
           </thead>
-          <tbody>
-            {rows.map((a) => (
-              <tr key={a.path} className={a.path === selected ? "selected" : ""} onClick={() => setSelected(a.path)}>
+          <tbody onKeyDown={tableKeys(ids, selected, setSelected)}>
+            {rows.map((a, i) => (
+              <tr key={a.path} data-row-id={a.path} className={a.path === selected ? "selected" : ""} onClick={() => setSelected(a.path)}
+                tabIndex={rowTabIndex(a.path, i, selected, ids)} aria-selected={a.path === selected}>
                 <td>
                   <span className="name-cell">
                     <AppIcon name={a.name} icon={iconOf(a.path)} size={22} />
                     <span className="app-name">{a.name}<small>{a.version}</small></span>
                     {a.running && <span className="pill-running">đang chạy</span>}
-                    {!a.ownedByUser && <Lock size={11} className="lock" aria-label="cần mật khẩu admin" />}
+                    {!a.ownedByUser && <Lock size={11} className="lock" role="img" aria-label="cần mật khẩu admin" />}
                   </span>
                 </td>
                 <td className="right">{fileBytes(a.size)}</td>
@@ -129,12 +139,19 @@ function AppPanel({ app, lastReport, onFinished, onQuit }: {
   const [checked, setChecked] = useState<Set<string>>(new Set());
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [quitError, setQuitError] = useState<string | null>(null);
 
   useEffect(() => {
     api.appLeftovers(app.path).then((l) => {
       setLeftovers(l);
       // Everything measurable is ticked; unreadable items stay unticked.
       setChecked(new Set([app.path, ...l.filter((x) => x.size !== null).map((x) => x.path)]));
+    }, (e) => {
+      // Still allow removing the .app itself; just say the leftovers are unknown.
+      setLeftovers([]);
+      setChecked(new Set([app.path]));
+      setLoadError(String(e));
     });
   }, [app.path]);
 
@@ -142,7 +159,7 @@ function AppPanel({ app, lastReport, onFinished, onQuit }: {
   const freed = [...checked].reduce((s, p) => s + sizeOf(p), 0);
   const [freedValue, freedUnit] = fileBytesParts(freed);
   const needsAdmin = (!app.ownedByUser && checked.has(app.path)) || (leftovers ?? []).some((l) => l.needsAdmin && checked.has(l.path));
-  const toggle = (p: string) => setChecked((s) => { const n = new Set(s); n.has(p) ? n.delete(p) : n.add(p); return n; });
+  const toggle = (p: string) => { setConfirming(false); setChecked((s) => { const n = new Set(s); n.has(p) ? n.delete(p) : n.add(p); return n; }); };
 
   const uninstall = async () => {
     setConfirming(false);
@@ -166,7 +183,7 @@ function AppPanel({ app, lastReport, onFinished, onQuit }: {
             Chuyển {checked.size} mục ({fileBytes(freed)}) vào Thùng rác
             {needsAdmin && <><br />Finder sẽ hỏi mật khẩu admin</>}
           </div>
-          <div className="scan-track"><div style={{ width: "100%" }} /></div>
+          <div className="scan-track indeterminate" role="progressbar" aria-label={`Đang gỡ ${app.name}`}><div /></div>
         </div>
       )}
       <header>
@@ -190,7 +207,8 @@ function AppPanel({ app, lastReport, onFinished, onQuit }: {
         <Row path={app.path} name={`${app.name}.app`} size={app.size} admin={!app.ownedByUser}
           on={checked.has(app.path)} toggle={toggle} />
         {leftovers === null && <li className="muted">Đang tìm dữ liệu sót lại…</li>}
-        {leftovers?.length === 0 && <li className="muted">Không có dữ liệu sót lại</li>}
+        {loadError && <li className="insp-error" role="alert">Không tìm được dữ liệu sót lại: {loadError}</li>}
+        {leftovers?.length === 0 && !loadError && <li className="muted">Không có dữ liệu sót lại</li>}
         {leftovers?.map((l) => (
           <Row key={l.path} path={l.path} name={l.name} size={l.size} admin={l.needsAdmin}
             on={checked.has(l.path)} toggle={toggle} />
@@ -199,17 +217,23 @@ function AppPanel({ app, lastReport, onFinished, onQuit }: {
 
       {lastReport && lastReport.failed.length > 0 && <ReportBox report={lastReport} />}
       {app.running ? (
-        <button className="btn wide" onClick={() => api.quitApp(app.bundleId).then(() => setTimeout(onQuit, 1500))}>
-          <Power size={14} /> Thoát {app.name} trước khi gỡ
-        </button>
+        <>
+          <button className="btn wide" onClick={() => {
+            setQuitError(null);
+            api.quitApp(app.bundleId).then(() => setTimeout(onQuit, 1500), (e) => setQuitError(String(e)));
+          }}>
+            <Power size={14} /> Thoát {app.name} trước khi gỡ
+          </button>
+          {quitError && <div className="insp-error" role="alert">Không thoát được {app.name}: {quitError}</div>}
+        </>
       ) : confirming ? (
         <div className="confirm-row">
           <button className="btn" onClick={() => setConfirming(false)}>Huỷ</button>
-          <button className="btn primary danger-fill" onClick={uninstall}>Xác nhận gỡ · {fileBytes(freed)}</button>
+          <button className="btn primary danger-fill" onClick={uninstall} autoFocus>{checked.has(app.path) ? "Xác nhận gỡ" : "Xác nhận chuyển"} · {fileBytes(freed)}</button>
         </div>
       ) : (
         <button className="btn primary wide" disabled={busy || checked.size === 0 || leftovers === null} onClick={() => setConfirming(true)}>
-          {busy ? "Đang gỡ…" : `Gỡ ${app.name}`}
+          {busy ? "Đang gỡ…" : checked.has(app.path) ? `Gỡ ${app.name}` : `Chuyển ${checked.size} mục vào Thùng rác`}
         </button>
       )}
       <div className="care-note">
@@ -248,9 +272,10 @@ function Row({ path, name, size, admin, on, toggle }: {
 }) {
   return (
     <li title={path}>
-      <button className={`check small ${on ? "on" : ""}`} onClick={() => toggle(path)}>{on && <Check size={10} strokeWidth={3} />}</button>
+      <button className={`check small ${on ? "on" : ""}`} onClick={() => toggle(path)}
+        role="checkbox" aria-checked={on} aria-label={`Chọn ${name}`}>{on && <Check size={10} strokeWidth={3} />}</button>
       <div className="lo-text">
-        <span className="lo-name">{name}{admin && <Lock size={10} className="lock" />}</span>
+        <span className="lo-name">{name}{admin && <Lock size={10} className="lock" role="img" aria-label="cần mật khẩu admin" />}</span>
         <span className="lo-path">{tilde(path)}</span>
       </div>
       <span className="lo-size">{size === null ? "không đo được" : fileBytes(size)}</span>
