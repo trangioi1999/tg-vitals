@@ -13,7 +13,7 @@ export function Donut({ slices, size = 120, stroke = 14, center, sub }: {
   const total = slices.reduce((s, x) => s + x.value, 0) || 1;
   const r = (size - stroke) / 2;
   const c = 2 * Math.PI * r;
-  const gap = 3;
+  const gap = 3; // butt caps, so this is the real gap between slices
   let offset = 0;
 
   return (
@@ -25,7 +25,7 @@ export function Donut({ slices, size = 120, stroke = 14, center, sub }: {
             <circle
               key={i}
               r={r} cx={size / 2} cy={size / 2}
-              fill="none" stroke={s.color} strokeWidth={stroke} strokeLinecap="round"
+              fill="none" stroke={s.color} strokeWidth={stroke} strokeLinecap="butt"
               strokeDasharray={`${len} ${c - len}`}
               strokeDashoffset={-offset}
               transform={`rotate(-90 ${size / 2} ${size / 2})`}
